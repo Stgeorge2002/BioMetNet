@@ -467,11 +467,11 @@ def prepare_multi_organism_dataset(
         "n_train_organisms": len(train_idx),
         "n_val_organisms": len(val_idx),
         "n_test_organisms": len(test_idx),
-        "d_model": 256,
+        "d_model": 512,
         "n_heads": 8,
-        "n_encoder_layers": 2,
-        "n_cross_layers": 2,
-        "ff_dim": 512,
+        "n_encoder_layers": 4,
+        "n_cross_layers": 4,
+        "ff_dim": 2048,
     }
     (out_dir / "config.json").write_text(json.dumps(config, indent=2))
     (out_dir / "universal_reactions.json").write_text(

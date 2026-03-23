@@ -26,6 +26,8 @@ echo ""
 echo "=== Step 1/3: Downloading BiGG models & preparing dataset ==="
 echo "This downloads ~108 COBRA models from BiGG and generates training data."
 echo ""
+# Clear old processed data so it regenerates with new config
+rm -rf data/processed/multi_organism
 if [ -n "$MAX_MODELS_VAL" ]; then
     uv run python scripts/prepare_multi_organism.py --max-models "$MAX_MODELS_VAL"
 else
@@ -35,6 +37,8 @@ fi
 echo ""
 echo "=== Step 2/3: Training multi-organism classifier ==="
 echo ""
+# Clear old checkpoints for clean run
+rm -rf checkpoints
 uv run python scripts/train.py --dataset multi_organism
 
 echo ""

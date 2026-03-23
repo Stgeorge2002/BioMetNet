@@ -41,10 +41,10 @@ def main() -> None:
         mo_config = json.loads((data_dir / "config.json").read_text())
 
         config = TrainingConfig(
-            batch_size=4,
-            lr=3e-4,
-            epochs=30,
-            warmup_steps=200,
+            batch_size=32,
+            lr=1e-4,
+            epochs=60,
+            warmup_steps=500,
             log_every=50,
         )
 
@@ -94,6 +94,7 @@ def main() -> None:
         trainer = ClassifierTrainer(
             model, train_loader, val_loader, config,
             pos_weight=None, resume_checkpoint=resume_ckpt,
+            use_amp=True,
         )
         trainer.train()
         return

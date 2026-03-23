@@ -196,12 +196,14 @@ class ClassifierTrainer:
         config: TrainingConfig,
         pos_weight: torch.Tensor | None = None,
         resume_checkpoint: dict | None = None,
+        use_amp: bool = False,
     ) -> None:
         self.device = config.resolve_device()
         self.model = model.to(self.device)
         self.config = config
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.use_amp = use_amp and self.device == "cuda"
 
         pw = pos_weight.to(self.device) if pos_weight is not None else None
         self.criterion = FocalBCELoss(
@@ -210,6 +212,8 @@ class ClassifierTrainer:
         self.optimizer = torch.optim.AdamW(
             model.parameters(), lr=config.lr, weight_decay=config.weight_decay
         )
+
+        self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
 
         total_steps = len(train_loader) * config.epochs
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
@@ -240,19 +244,22 @@ class ClassifierTrainer:
         for batch in self.train_loader:
             labels = batch["labels"].to(self.device)
 
-            if "gene_features" in batch:
-                logits = self.model(
-                    batch["gene_features"].to(self.device),
-                    batch["gene_mask"].to(self.device),
-                )
-            else:
-                logits = self.model(batch["genome"].to(self.device))
-            loss = self.criterion(logits, labels)
+            with torch.amp.autocast("cuda", enabled=self.use_amp):
+                if "gene_features" in batch:
+                    logits = self.model(
+                        batch["gene_features"].to(self.device),
+                        batch["gene_mask"].to(self.device),
+                    )
+                else:
+                    logits = self.model(batch["genome"].to(self.device))
+                loss = self.criterion(logits, labels)
 
             self.optimizer.zero_grad()
-            loss.backward()
+            self.scaler.scale(loss).backward()
+            self.scaler.unscale_(self.optimizer)
             nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
-            self.optimizer.step()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
             self.scheduler.step()
 
             total_loss += loss.item()
@@ -280,14 +287,15 @@ class ClassifierTrainer:
         for batch in self.val_loader:
             labels = batch["labels"].to(self.device)
 
-            if "gene_features" in batch:
-                logits = self.model(
-                    batch["gene_features"].to(self.device),
-                    batch["gene_mask"].to(self.device),
-                )
-            else:
-                logits = self.model(batch["genome"].to(self.device))
-            loss = self.criterion(logits, labels)
+            with torch.amp.autocast("cuda", enabled=self.use_amp):
+                if "gene_features" in batch:
+                    logits = self.model(
+                        batch["gene_features"].to(self.device),
+                        batch["gene_mask"].to(self.device),
+                    )
+                else:
+                    logits = self.model(batch["genome"].to(self.device))
+                loss = self.criterion(logits, labels)
             total_loss += loss.item()
             n_batches += 1
 
