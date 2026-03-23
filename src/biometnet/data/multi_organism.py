@@ -74,6 +74,21 @@ _KNOWN_BIGG_MODELS = [
     "AGORA_Lactobacillus_reuteri_JCM_1112",
 ]
 
+# E. coli model IDs (subset of _KNOWN_BIGG_MODELS)
+_ECOLI_MODELS = {
+    "e_coli_core", "iAF1260", "iAF1260b",
+    "iAPECO1_1312", "iB21_1397",
+    "iEC1344_C", "iEC1349_Crooks", "iEC1356_Bl21DE3", "iEC1364_W", "iEC55989",
+    "iECABU_c1320", "iECB_3114", "iECBD_1354", "iECED1_1282", "iECH74115_1262",
+    "iECIAI1_1343", "iECIAI39_1322", "iECNA114_1301", "iECO103_1326",
+    "iECO111_1330", "iECO26_1355", "iECO55EA1_1288", "iECOK1_1307",
+    "iECsc47_1070", "iECUMN_1333", "iECW_1372", "iECW3110_1372",
+    "iEKO11_1354", "iEcDH1_1363", "iEcDH1ME8569_1439", "iEcE24377_1341",
+    "iEcHS_1320", "iEcSMS35_1347",
+    "iJO1366", "iJR904", "iML1515",
+    "iUMN146_1321", "iUMNK88_1353", "iUTI89_1310", "iZ_1308",
+}
+
 
 # ---------------------------------------------------------------------------
 # Model downloading
@@ -112,15 +127,19 @@ def download_bigg_model_json(
 def download_all_bigg_models(
     cache_dir: str | Path = "data/raw/bigg/models",
     max_models: int | None = None,
+    ecoli_only: bool = False,
 ) -> list[Path]:
     """Download all BiGG COBRA JSON models.
 
     Returns paths to successfully downloaded model files.
+    If ecoli_only is True, only downloads E. coli strain models.
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     model_list = fetch_bigg_model_list()
+    if ecoli_only:
+        model_list = [m for m in model_list if m["bigg_id"] in _ECOLI_MODELS]
     if max_models is not None:
         model_list = model_list[:max_models]
 
@@ -417,8 +436,8 @@ def generate_organism_samples(
 def prepare_multi_organism_dataset(
     model_paths: list[Path],
     out_dir: str | Path = "data/processed/multi_organism",
-    samples_per_train_org: int = 500,
-    samples_per_eval_org: int = 50,
+    samples_per_train_org: int = 1000,
+    samples_per_eval_org: int = 200,
     min_rxn_organisms: int = 2,
     test_frac: float = 0.1,
     val_frac: float = 0.1,

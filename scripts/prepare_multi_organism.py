@@ -17,21 +17,27 @@ def main() -> None:
         help="Limit number of BiGG models to download (default: all)",
     )
     parser.add_argument(
-        "--samples-per-org", type=int, default=500,
-        help="Training samples per organism (default: 500)",
+        "--samples-per-org", type=int, default=1000,
+        help="Training samples per organism (default: 1000)",
     )
     parser.add_argument(
-        "--eval-samples-per-org", type=int, default=50,
-        help="Val/test samples per organism (default: 50)",
+        "--eval-samples-per-org", type=int, default=200,
+        help="Val/test samples per organism (default: 200)",
     )
     parser.add_argument(
         "--min-organisms", type=int, default=2,
         help="Min organisms a reaction must appear in to be included (default: 2)",
     )
+    parser.add_argument(
+        "--ecoli-only", action="store_true",
+        help="Only use E. coli strain models from BiGG",
+    )
     args = parser.parse_args()
 
     print("Step 1: Downloading BiGG models...")
-    paths = download_all_bigg_models(max_models=args.max_models)
+    paths = download_all_bigg_models(
+        max_models=args.max_models, ecoli_only=args.ecoli_only,
+    )
     print(f"\nDownloaded {len(paths)} models\n")
 
     print("Step 2: Preparing multi-organism dataset...")
