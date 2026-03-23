@@ -27,7 +27,7 @@ def test_pathway_accuracy():
     tgt = {"PFK", "PGK", "PGM", "ENO", "PYK"}
     pred = {"PFK", "PGK", "PGM", "ENO", "PYK"}
     pa = pathway_accuracy(pred, tgt)
-    assert pa["pathway_accuracy"] > 0  # at least glycolysis is correct
+    assert pa["pathway_accuracy"] == 1.0  # perfect prediction → all pathways correct
 
 
 def test_evaluate_predictions():
@@ -38,3 +38,6 @@ def test_evaluate_predictions():
     assert "f1" in result
     assert "pathway_accuracy" in result
     assert "metabolite_coverage" in result
+    assert 0.0 <= result["precision"] <= 1.0
+    assert 0.0 <= result["f1"] <= 1.0
+    assert result["recall"] < 1.0  # second sample misses FUM
