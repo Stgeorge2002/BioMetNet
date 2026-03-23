@@ -419,7 +419,7 @@ def generate_organism_samples(
 def prepare_multi_organism_dataset(
     model_paths: list[Path],
     out_dir: str | Path = "data/processed/multi_organism",
-    samples_per_train_org: int = 200,
+    samples_per_train_org: int = 500,
     samples_per_eval_org: int = 50,
     min_rxn_organisms: int = 2,
     test_frac: float = 0.1,
@@ -565,7 +565,7 @@ def prepare_multi_organism_dataset(
         "n_heads": 8,
         "n_encoder_layers": 2,
         "n_cross_layers": 2,
-        "ff_dim": 1024,
+        "ff_dim": 512,
     }
     (out_dir / "config.json").write_text(json.dumps(config, indent=2))
     (out_dir / "universal_reactions.json").write_text(

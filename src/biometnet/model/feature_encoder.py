@@ -29,6 +29,7 @@ class GeneFeatureEncoder(nn.Module):
             nn.Linear(n_features, d_model),
             nn.LayerNorm(d_model),
             nn.GELU(),
+            nn.Dropout(dropout),
         )
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,

@@ -42,9 +42,10 @@ def main() -> None:
 
         config = TrainingConfig(
             batch_size=16,
-            lr=3e-4,
+            lr=1e-4,
             epochs=30,
-            warmup_steps=200,
+            warmup_steps=500,
+            weight_decay=5e-2,
             log_every=20,
         )
         grad_accum_steps = 2  # effective batch = 16 * 2 = 32
@@ -52,7 +53,7 @@ def main() -> None:
         print("Loading multi-organism dataset...")
         org_feat_path = data_dir / "organism_features.pt"
         train_ds = MultiOrganismDataset(
-            data_dir / "train.pt", org_feat_path, augment_noise=0.01,
+            data_dir / "train.pt", org_feat_path, augment_noise=0.05,
         )
         val_ds = MultiOrganismDataset(data_dir / "val.pt", org_feat_path)
         print(f"  Train: {len(train_ds)}, Val: {len(val_ds)}")
@@ -78,7 +79,7 @@ def main() -> None:
             n_encoder_layers=mo_config.get("n_encoder_layers", 2),
             n_cross_layers=mo_config.get("n_cross_layers", 2),
             ff_dim=mo_config.get("ff_dim", 512),
-            dropout=0.1,
+            dropout=0.3,
         )
         n_params = sum(p.numel() for p in model.parameters())
         print(f"MultiOrganismClassifier parameters: {n_params:,}")
