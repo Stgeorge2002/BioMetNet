@@ -163,15 +163,15 @@ class BinaryMultiLabelDataset(Dataset):
 
 
 # ---------------------------------------------------------------------------
-# Multi-organism dataset (cross-organism gene features)
+# E. coli strain dataset (cross-strain gene features)
 # ---------------------------------------------------------------------------
 
 
-class MultiOrganismDataset(Dataset):
-    """Dataset for multi-organism training with per-gene features.
+class StrainDataset(Dataset):
+    """Dataset for cross-strain training with per-gene features.
 
-    Each sample stores which organism it comes from, a gene presence vector,
-    and a universal reaction label vector.  Gene features are stored per-organism
+    Each sample stores which strain it comes from, a gene presence vector,
+    and a universal reaction label vector.  Gene features are stored per-strain
     and gated by presence at access time.
     """
 
@@ -215,10 +215,10 @@ class MultiOrganismDataset(Dataset):
         }
 
 
-def multi_org_collate_fn(
+def strain_collate_fn(
     batch: list[dict[str, torch.Tensor]],
 ) -> dict[str, torch.Tensor]:
-    """Collate multi-organism samples with dynamic gene-count padding."""
+    """Collate strain samples with dynamic gene-count padding."""
     max_genes = max(b["gene_features"].size(0) for b in batch)
     n_feat = batch[0]["gene_features"].size(1)
     B = len(batch)

@@ -41,9 +41,9 @@ if torch.cuda.is_available():
 echo ""
 echo "=== Import Check ==="
 uv run python -c "
-from biometnet.data.multi_organism import download_all_bigg_models, prepare_multi_organism_dataset
-from biometnet.model.multi_org_classifier import MultiOrganismClassifier
-from biometnet.data.dataset import MultiOrganismDataset, multi_org_collate_fn
+from biometnet.data.strain_data import download_all_bigg_models, prepare_strain_dataset
+from biometnet.model.strain_classifier import EcoliStrainClassifier
+from biometnet.data.dataset import StrainDataset, strain_collate_fn
 print('All imports OK')
 "
 

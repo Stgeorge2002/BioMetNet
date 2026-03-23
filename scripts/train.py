@@ -13,31 +13,31 @@ from biometnet.data.dataset import (
     GenomeMetabolismDataset,
     MultiLabelDataset,
     BinaryMultiLabelDataset,
-    MultiOrganismDataset,
+    StrainDataset,
     collate_fn,
     multilabel_collate_fn,
-    multi_org_collate_fn,
+    strain_collate_fn,
 )
 from biometnet.model.seq2seq import Seq2SeqModel
 from biometnet.model.classifier import GenomeClassifier
-from biometnet.model.multi_org_classifier import MultiOrganismClassifier
+from biometnet.model.strain_classifier import EcoliStrainClassifier
 from biometnet.training.config import TrainingConfig
 from biometnet.training.trainer import Trainer, ClassifierTrainer
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train BioMetNet")
-    parser.add_argument("--dataset", default="toy", choices=["toy", "ecoli", "multi_organism"])
+    parser.add_argument("--dataset", default="toy", choices=["toy", "ecoli", "ecoli_strains"])
     parser.add_argument("--model", default="classifier", choices=["seq2seq", "classifier"])
     parser.add_argument("--resume", action="store_true",
                         help="Resume training from the best checkpoint")
     args = parser.parse_args()
 
     # -----------------------------------------------------------------------
-    # Multi-organism path (BiGG cross-organism training)
+    # E. coli cross-strain path (BiGG strain training)
     # -----------------------------------------------------------------------
-    if args.dataset == "multi_organism":
-        data_dir = Path("data/processed/multi_organism")
+    if args.dataset == "ecoli_strains":
+        data_dir = Path("data/processed/ecoli_strains")
         mo_config = json.loads((data_dir / "config.json").read_text())
 
         config = TrainingConfig(
@@ -51,12 +51,12 @@ def main() -> None:
         )
         grad_accum_steps = 2  # effective batch = 16 * 2 = 32
 
-        print("Loading multi-organism dataset...")
+        print("Loading E. coli strain dataset...")
         org_feat_path = data_dir / "organism_features.pt"
-        train_ds = MultiOrganismDataset(
+        train_ds = StrainDataset(
             data_dir / "train.pt", org_feat_path, augment_noise=config.augment_noise,
         )
-        val_ds = MultiOrganismDataset(data_dir / "val.pt", org_feat_path)
+        val_ds = StrainDataset(data_dir / "val.pt", org_feat_path)
         print(f"  Train: {len(train_ds)}, Val: {len(val_ds)}")
         print(f"  Features/gene: {mo_config['n_features']}, "
               f"Universal reactions: {mo_config['n_universal_reactions']}")
@@ -72,16 +72,16 @@ def main() -> None:
 
         train_loader = DataLoader(
             train_ds, batch_size=config.batch_size,
-            shuffle=True, collate_fn=multi_org_collate_fn,
+            shuffle=True, collate_fn=strain_collate_fn,
             num_workers=4, pin_memory=True, persistent_workers=True,
         )
         val_loader = DataLoader(
             val_ds, batch_size=config.batch_size,
-            shuffle=False, collate_fn=multi_org_collate_fn,
+            shuffle=False, collate_fn=strain_collate_fn,
             num_workers=2, pin_memory=True, persistent_workers=True,
         )
 
-        model = MultiOrganismClassifier(
+        model = EcoliStrainClassifier(
             n_features=mo_config["n_features"],
             n_reactions=mo_config["n_universal_reactions"],
             d_model=mo_config.get("d_model", 256),
@@ -92,7 +92,7 @@ def main() -> None:
             dropout=0.2,
         )
         n_params = sum(p.numel() for p in model.parameters())
-        print(f"MultiOrganismClassifier parameters: {n_params:,}")
+        print(f"EcoliStrainClassifier parameters: {n_params:,}")
 
         resume_ckpt = None
         if args.resume:

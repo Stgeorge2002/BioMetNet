@@ -1,9 +1,9 @@
-"""Multi-organism classifier with universal reaction prediction.
+"""E. coli strain classifier with universal reaction prediction.
 
-Uses organism-agnostic gene features → GeneFeatureEncoder → cross-attention
+Uses strain-agnostic gene features -> GeneFeatureEncoder -> cross-attention
 to predict which reactions from a universal reaction set are active.
 
-Generalizes across organisms because gene features (EC, subsystem) are
+Generalizes across E. coli strains because gene features (EC, subsystem) are
 universal, unlike per-gene ID embeddings.
 """
 from __future__ import annotations
@@ -15,8 +15,8 @@ from biometnet.model.feature_encoder import GeneFeatureEncoder
 from biometnet.model.classifier import CrossAttentionBlock
 
 
-class MultiOrganismClassifier(nn.Module):
-    """Cross-organism classifier: predicts active reactions from gene features.
+class EcoliStrainClassifier(nn.Module):
+    """E. coli strain classifier: predicts active reactions from gene features.
 
     Architecture:
       1. GeneFeatureEncoder: gene features -> contextualized embeddings

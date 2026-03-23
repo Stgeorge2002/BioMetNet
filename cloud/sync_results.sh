@@ -29,10 +29,10 @@ rsync -avz --progress \
     --include='*.json' \
     --exclude='*.pt' \
     -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=no" \
-    root@${POD_IP}:/workspace/BioMetNet/data/processed/multi_organism/ \
-    ~/BioMetNet/data/processed/multi_organism/
+    root@${POD_IP}:/workspace/BioMetNet/data/processed/ecoli_strains/ \
+    ~/BioMetNet/data/processed/ecoli_strains/
 
 echo ""
 echo "Sync complete! Results are in:"
-echo "  ~/BioMetNet/results/eval_multi_organism.json"
+echo "  ~/BioMetNet/results/eval_ecoli_strains.json"
 echo "  ~/BioMetNet/checkpoints/best.pt"

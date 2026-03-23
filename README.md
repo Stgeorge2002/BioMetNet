@@ -1,8 +1,8 @@
 # BioMetNet — Genome-to-Metabolism Neural Mapping
 
-A deep learning framework that predicts active metabolic reactions from bacterial genome annotations. Given a set of genes (as a binary presence vector or GFF annotation), BioMetNet predicts which metabolic reactions are catalysed by the organism.
+A deep learning framework that predicts active metabolic reactions from E. coli genome annotations. Given a set of genes (as a binary presence vector or GFF annotation), BioMetNet predicts which metabolic reactions are catalysed by the organism.
 
-Supports single-organism training (E. coli iML1515) and cross-organism generalisation using universal gene features from [BiGG Models](http://bigg.ucsd.edu/).
+Trains across multiple E. coli strains using universal gene features from [BiGG Models](http://bigg.ucsd.edu/).
 
 ## Quickstart
 
@@ -15,15 +15,15 @@ uv run python scripts/generate_toy_data.py
 uv run python scripts/train.py
 uv run python scripts/evaluate.py
 
-# Option 2: E. coli iML1515 (single organism, ~1500 genes, ~1100 reactions)
+# Option 2: E. coli iML1515 (single strain, ~1500 genes, ~1100 reactions)
 uv run python scripts/prepare_ecoli_data.py
 uv run python scripts/train.py --dataset ecoli
 uv run python scripts/evaluate.py --dataset ecoli --sweep --pathway-breakdown
 
-# Option 3: Multi-organism (cross-species, ~70 BiGG models)
-uv run python scripts/prepare_multi_organism.py
-uv run python scripts/train.py --dataset multi_organism
-uv run python scripts/evaluate.py --dataset multi_organism --sweep
+# Option 3: E. coli cross-strain (~34 BiGG strain models)
+uv run python scripts/prepare_data.py
+uv run python scripts/train.py --dataset ecoli_strains
+uv run python scripts/evaluate.py --dataset ecoli_strains --sweep
 ```
 
 ## Models
@@ -39,9 +39,9 @@ Cross-attention transformer for multi-label reaction prediction.
 
 Training uses focal BCE loss (gamma=2) with label smoothing, AdamW with warmup-cosine schedule, AMP (mixed precision), and gradient accumulation.
 
-### MultiOrganismClassifier
+### EcoliStrainClassifier
 
-Same cross-attention architecture but replaces per-gene-ID embeddings with an organism-agnostic **GeneFeatureEncoder** that projects universal gene features (EC number, metabolic subsystem) through a transformer. No positional encoding — genes are treated as a set. Generalises across species because features are shared.
+Same cross-attention architecture but replaces per-gene-ID embeddings with a strain-agnostic **GeneFeatureEncoder** that projects universal gene features (EC number, metabolic subsystem) through a transformer. No positional encoding — genes are treated as a set. Generalises across E. coli strains because features are shared.
 
 ### Seq2SeqModel (legacy)
 
@@ -80,7 +80,7 @@ The `--sweep` flag tests thresholds from 0.05 to 0.70 to find the optimal operat
 src/biometnet/
 ├── data/              # Datasets, vocab, data generation pipelines
 │   ├── ecoli_data.py      # E. coli iML1515 pipeline with GPR evaluation
-│   ├── multi_organism.py  # Cross-organism BiGG pipeline
+│   ├── strain_data.py     # Cross-strain BiGG pipeline
 │   ├── dataset.py         # PyTorch Dataset/collate implementations
 │   ├── metabolic_vocab.py # Reaction token vocabulary
 │   └── toy_data.py        # Synthetic 40-gene, 10-pathway data
@@ -88,8 +88,8 @@ src/biometnet/
 │   ├── encoder.py         # GenomeEncoder (gene embeddings + transformer)
 │   ├── decoder.py         # MetabolicDecoder (autoregressive)
 │   ├── classifier.py      # GenomeClassifier + CrossAttentionBlock
-│   ├── feature_encoder.py # GeneFeatureEncoder (organism-agnostic)
-│   ├── multi_org_classifier.py
+│   ├── feature_encoder.py # GeneFeatureEncoder (strain-agnostic)
+│   ├── strain_classifier.py  # EcoliStrainClassifier
 │   └── seq2seq.py         # Encoder-decoder wrapper
 ├── training/          # Training loops and configuration
 │   ├── config.py          # ModelConfig, DataConfig, TrainingConfig
@@ -98,11 +98,11 @@ src/biometnet/
     └── metrics.py         # All evaluation metrics
 
 scripts/               # CLI entry points
-├── train.py               # Training (toy/ecoli/multi_organism × classifier/seq2seq)
+├── train.py               # Training (toy/ecoli/ecoli_strains × classifier/seq2seq)
 ├── evaluate.py            # Evaluation with threshold sweep
 ├── predict.py             # GFF → reaction predictions
 ├── prepare_ecoli_data.py  # Download iML1515 + generate training data
-├── prepare_multi_organism.py  # Download BiGG models + build universal dataset
+├── prepare_data.py        # Download E. coli strain models + build dataset
 ├── generate_toy_data.py   # Synthetic data for testing
 └── download_bigg.py       # Standalone BiGG model downloader
 
@@ -117,24 +117,24 @@ tests/                 # Unit tests (pytest)
 
 ## Data Pipeline
 
-**E. coli:** Downloads iML1515 from BiGG → extracts genes, reactions, GPR rules, pathway definitions → generates 30K samples via gene dropout strategies (block, independent, pathway-level) → resamples to 12K balanced samples → 80/10/10 split.
+**E. coli (single strain):** Downloads iML1515 from BiGG → extracts genes, reactions, GPR rules, pathway definitions → generates 30K samples via gene dropout strategies (block, independent, pathway-level) → resamples to 12K balanced samples → 80/10/10 split.
 
-**Multi-organism:** Downloads ~70 bacterial models from BiGG → builds universal reaction set (reactions appearing in ≥2 organisms) → extracts organism-agnostic gene features (EC, subsystem) → generates 500 dropout-augmented samples per organism → saves as padded tensors for fast loading.
+**E. coli (cross-strain):** Downloads ~34 E. coli strain models from BiGG → builds universal reaction set (reactions appearing in ≥2 strains) → extracts strain-agnostic gene features (EC, subsystem) → generates 1000 dropout-augmented samples per strain → saves as padded tensors for fast loading.
 
 **Toy:** 40 genes, 10 synthetic pathways, 1000 samples. Useful for quick iteration and testing.
 
 ## Training Configuration
 
-| Setting | Toy | E. coli | Multi-organism |
+| Setting | Toy | E. coli (single) | E. coli (cross-strain) |
 |---------|-----|---------|----------------|
-| Model | GenomeClassifier | GenomeClassifier | MultiOrganismClassifier |
+| Model | GenomeClassifier | GenomeClassifier | EcoliStrainClassifier |
 | d_model | 128 | 256 | 256 |
 | Encoder layers | 2 | 4 | 2 |
 | Cross-attn layers | 1 | 1 | 2 |
 | ff_dim | 256 | 512 | 512 |
 | Batch size | 32 | 8 | 16 (×2 accum = 32) |
 | Learning rate | 3e-4 | 3e-4 | 1e-4 |
-| Dropout | 0.1 | 0.1 | 0.3 |
+| Dropout | 0.1 | 0.1 | 0.2 |
 | Epochs | 50 | 60 | 30 |
 | Early stopping | 7 epochs patience | 7 epochs patience | 7 epochs patience |
 

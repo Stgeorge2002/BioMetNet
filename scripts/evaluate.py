@@ -12,21 +12,21 @@ from biometnet.data.toy_data import load_toy_dataset
 from biometnet.data.dataset import (
     GenomeMetabolismDataset,
     MultiLabelDataset,
-    MultiOrganismDataset,
+    StrainDataset,
     collate_fn,
     multilabel_collate_fn,
-    multi_org_collate_fn,
+    strain_collate_fn,
 )
 from biometnet.model.seq2seq import Seq2SeqModel
 from biometnet.model.classifier import GenomeClassifier
-from biometnet.model.multi_org_classifier import MultiOrganismClassifier
+from biometnet.model.strain_classifier import EcoliStrainClassifier
 from biometnet.training.config import TrainingConfig
 from biometnet.evaluation.metrics import evaluate_predictions, per_pathway_breakdown
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate BioMetNet")
-    parser.add_argument("--dataset", default="toy", choices=["toy", "ecoli", "multi_organism"])
+    parser.add_argument("--dataset", default="toy", choices=["toy", "ecoli", "ecoli_strains"])
     parser.add_argument("--model", default="classifier", choices=["seq2seq", "classifier"])
     parser.add_argument("--n-samples", type=int, default=None,
                         help="Max test samples to evaluate (default: all for toy, 20 for ecoli seq2seq)")
@@ -41,8 +41,8 @@ def main() -> None:
     # -----------------------------------------------------------------------
     # Multi-organism evaluation path
     # -----------------------------------------------------------------------
-    if args.dataset == "multi_organism":
-        data_dir = Path("data/processed/multi_organism")
+    if args.dataset == "ecoli_strains":
+        data_dir = Path("data/processed/ecoli_strains")
         mo_config = json.loads((data_dir / "config.json").read_text())
         uni_rxns = json.loads((data_dir / "universal_reactions.json").read_text())
 
@@ -57,7 +57,7 @@ def main() -> None:
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']} "
               f"(val_loss={checkpoint['val_loss']:.4f})")
 
-        model = MultiOrganismClassifier(
+        model = EcoliStrainClassifier(
             n_features=mo_config["n_features"],
             n_reactions=mo_config["n_universal_reactions"],
             d_model=mo_config.get("d_model", 256),
@@ -72,9 +72,9 @@ def main() -> None:
         model.eval()
 
         org_feat_path = data_dir / "organism_features.pt"
-        test_ds = MultiOrganismDataset(data_dir / "test.pt", org_feat_path)
+        test_ds = StrainDataset(data_dir / "test.pt", org_feat_path)
         test_loader = DataLoader(
-            test_ds, batch_size=16, shuffle=False, collate_fn=multi_org_collate_fn,
+            test_ds, batch_size=16, shuffle=False, collate_fn=strain_collate_fn,
         )
         print(f"Evaluating {len(test_ds)} test samples, "
               f"Universal reactions: {len(uni_rxns)}")
@@ -99,7 +99,7 @@ def main() -> None:
                     all_targets.append(sorted(tgt))
 
         results = evaluate_predictions(all_preds, all_targets)
-        print(f"\n=== Multi-Organism Evaluation (threshold={args.threshold}) ===")
+        print(f"\n=== E. coli Strain Evaluation (threshold={args.threshold}) ===")
         print(f"  Reaction Precision: {results['precision']:.4f}")
         print(f"  Reaction Recall:    {results['recall']:.4f}")
         print(f"  Reaction F1:        {results['f1']:.4f}")
@@ -125,10 +125,10 @@ def main() -> None:
         # Save results
         output_dir = Path("results")
         output_dir.mkdir(exist_ok=True)
-        output_file = output_dir / "eval_multi_organism.json"
+        output_file = output_dir / "eval_ecoli_strains.json"
         output_data = {
-            "dataset": "multi_organism",
-            "model_type": "multi_org_classifier",
+            "dataset": "ecoli_strains",
+            "model_type": "ecoli_strain_classifier",
             "epoch": checkpoint["epoch"],
             "val_loss": checkpoint["val_loss"],
             "metrics": results,
