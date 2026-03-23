@@ -21,9 +21,7 @@ import requests
 import torch
 
 from biometnet.data.ecoli_data import evaluate_gpr
-
-BIGG_API = "https://bigg.ucsd.edu/api/v2"
-BIGG_STATIC = "http://bigg.ucsd.edu/static/models"
+from biometnet.data.bigg_loader import BIGG_API, BIGG_STATIC
 
 # Hardcoded fallback: bacterial BiGG model IDs (bacteria only).
 # Excludes eukaryotes (human Recon1/3D, yeast iMM904/iND750/iYL1228/iYO844/iYS1720,

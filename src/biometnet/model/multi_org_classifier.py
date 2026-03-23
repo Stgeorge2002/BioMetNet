@@ -34,7 +34,7 @@ class MultiOrganismClassifier(nn.Module):
         n_encoder_layers: int = 2,
         n_cross_layers: int = 2,
         ff_dim: int = 512,
-        dropout: float = 0.1,
+        dropout: float = 0.2,
     ):
         super().__init__()
         self.n_reactions = n_reactions

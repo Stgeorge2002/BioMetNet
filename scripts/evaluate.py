@@ -181,11 +181,11 @@ def main() -> None:
 
     if args.model == "classifier":
         n_genes = model_config["n_genes"] if model_config else config.model.n_genes
-        d_model = model_config.get("d_model", 256) if model_config else 256
-        n_heads = model_config.get("n_heads", 8) if model_config else 8
-        n_enc = model_config.get("n_encoder_layers", 4) if model_config else 4
-        n_cross = model_config.get("n_cross_layers", 1) if model_config else 1
-        ff_dim = model_config.get("ff_dim", 512) if model_config else 512
+        d_model = model_config.get("d_model", config.model.d_model) if model_config else config.model.d_model
+        n_heads = model_config.get("n_heads", config.model.n_heads) if model_config else config.model.n_heads
+        n_enc = model_config.get("n_encoder_layers", config.model.n_encoder_layers) if model_config else config.model.n_encoder_layers
+        n_cross = model_config.get("n_cross_layers", config.model.n_cross_layers) if model_config else config.model.n_cross_layers
+        ff_dim = model_config.get("ff_dim", config.model.ff_dim) if model_config else config.model.ff_dim
 
         model = GenomeClassifier(
             n_genes=n_genes,

@@ -57,11 +57,13 @@ def main() -> None:
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=True)
 
     if args.model == "classifier":
-        d_model = model_config.get("d_model", 256)
-        n_heads = model_config.get("n_heads", 8)
-        n_enc = model_config.get("n_encoder_layers", 4)
-        n_cross = model_config.get("n_cross_layers", 1)
-        ff_dim = model_config.get("ff_dim", 512)
+        from biometnet.training.config import ModelConfig
+        _mc_defaults = ModelConfig()
+        d_model = model_config.get("d_model", _mc_defaults.d_model)
+        n_heads = model_config.get("n_heads", _mc_defaults.n_heads)
+        n_enc = model_config.get("n_encoder_layers", _mc_defaults.n_encoder_layers)
+        n_cross = model_config.get("n_cross_layers", _mc_defaults.n_cross_layers)
+        ff_dim = model_config.get("ff_dim", _mc_defaults.ff_dim)
 
         model = GenomeClassifier(
             n_genes=model_config["n_genes"],

@@ -47,13 +47,14 @@ def main() -> None:
             warmup_steps=500,
             weight_decay=5e-2,
             log_every=20,
+            augment_noise=0.05,
         )
         grad_accum_steps = 2  # effective batch = 16 * 2 = 32
 
         print("Loading multi-organism dataset...")
         org_feat_path = data_dir / "organism_features.pt"
         train_ds = MultiOrganismDataset(
-            data_dir / "train.pt", org_feat_path, augment_noise=0.05,
+            data_dir / "train.pt", org_feat_path, augment_noise=config.augment_noise,
         )
         val_ds = MultiOrganismDataset(data_dir / "val.pt", org_feat_path)
         print(f"  Train: {len(train_ds)}, Val: {len(val_ds)}")
@@ -143,7 +144,7 @@ def main() -> None:
         val_pt = data_dir / "val.pt"
         if train_pt.exists() and val_pt.exists():
             print("Loading binary tensor datasets...", flush=True)
-            train_ds = BinaryMultiLabelDataset(train_pt, augment_noise=0.01)
+            train_ds = BinaryMultiLabelDataset(train_pt, augment_noise=config.augment_noise)
             val_ds = BinaryMultiLabelDataset(val_pt)
             print(f"  Train: {len(train_ds)}, Val: {len(val_ds)}")
         else:
@@ -168,11 +169,11 @@ def main() -> None:
         )
 
         n_genes = model_config["n_genes"] if model_config else config.model.n_genes
-        d_model = model_config.get("d_model", 256) if model_config else 256
-        n_heads = model_config.get("n_heads", 8) if model_config else 8
-        n_enc = model_config.get("n_encoder_layers", 4) if model_config else 4
-        n_cross = model_config.get("n_cross_layers", 1) if model_config else 1
-        ff_dim = model_config.get("ff_dim", 512) if model_config else 512
+        d_model = model_config.get("d_model", config.model.d_model) if model_config else config.model.d_model
+        n_heads = model_config.get("n_heads", config.model.n_heads) if model_config else config.model.n_heads
+        n_enc = model_config.get("n_encoder_layers", config.model.n_encoder_layers) if model_config else config.model.n_encoder_layers
+        n_cross = model_config.get("n_cross_layers", config.model.n_cross_layers) if model_config else config.model.n_cross_layers
+        ff_dim = model_config.get("ff_dim", config.model.ff_dim) if model_config else config.model.ff_dim
 
         model = GenomeClassifier(
             n_genes=n_genes,

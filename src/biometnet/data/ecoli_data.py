@@ -9,7 +9,9 @@ from typing import Any
 import requests
 
 
-BIGG_MODEL_URL = "http://bigg.ucsd.edu/static/models/iML1515.json"
+from biometnet.data.bigg_loader import BIGG_STATIC
+
+BIGG_MODEL_URL = f"{BIGG_STATIC}/iML1515.json"
 
 NCBI_ECOLI_GFF_URL = (
     "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/"

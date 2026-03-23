@@ -10,6 +10,7 @@ class ModelConfig:
     n_heads: int = 4
     n_encoder_layers: int = 2
     n_decoder_layers: int = 2
+    n_cross_layers: int = 1
     ff_dim: int = 256
     dropout: float = 0.1
     max_seq_len: int = 128
@@ -41,6 +42,7 @@ class TrainingConfig:
     log_every: int = 10
     val_every: int = 1  # validate every N epochs
     patience: int = 7  # early stopping: stop after N epochs without improvement
+    augment_noise: float = 0.0  # Gaussian noise stddev for data augmentation
 
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)

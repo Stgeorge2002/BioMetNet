@@ -8,6 +8,7 @@ import requests
 
 
 BIGG_API = "https://bigg.ucsd.edu/api/v2"
+BIGG_STATIC = "http://bigg.ucsd.edu/static/models"
 
 
 def fetch_model_list() -> list[dict]:

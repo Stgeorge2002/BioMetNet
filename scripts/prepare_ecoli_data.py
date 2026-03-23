@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Download E. coli iML1515 model and generate training data."""
+import argparse
 import json
 from pathlib import Path
 
@@ -27,6 +28,13 @@ ECOLI_MODEL_CONFIG = {
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Prepare E. coli iML1515 training data")
+    parser.add_argument("--n-pool", type=int, default=30000,
+                        help="Candidate pool size before resampling (default: 30000)")
+    parser.add_argument("--n-target", type=int, default=12000,
+                        help="Target dataset size after resampling (default: 12000)")
+    args = parser.parse_args()
+
     raw_dir = Path("data/raw/ecoli")
     out_dir = Path("data/processed/ecoli")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -65,8 +73,8 @@ def main() -> None:
 
     # Generate training data: large candidate pool with aggressive dropout,
     # then resample for uniform reaction-count distribution
-    n_pool = 30000
-    n_target = 12000
+    n_pool = args.n_pool
+    n_target = args.n_target
     print(f"Generating candidate pool ({n_pool} samples, mixed dropout strategies)...")
     pool = generate_ecoli_training_data(
         info, n_samples=n_pool, seed=42, pathway_defs=pathway_defs,
