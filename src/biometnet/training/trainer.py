@@ -207,6 +207,9 @@ class ClassifierTrainer:
         self.use_amp = use_amp and self.device == "cuda"
         self.grad_accum_steps = grad_accum_steps
 
+        if self.device == "cuda":
+            torch.backends.cudnn.benchmark = True
+
         pw = pos_weight.to(self.device) if pos_weight is not None else None
         self.criterion = FocalBCELoss(
             gamma=2.0, pos_weight=pw, label_smoothing=0.05,
@@ -244,16 +247,16 @@ class ClassifierTrainer:
         n_batches = 0
 
         for batch_idx, batch in enumerate(self.train_loader):
-            labels = batch["labels"].to(self.device)
+            labels = batch["labels"].to(self.device, non_blocking=True)
 
             with torch.amp.autocast("cuda", enabled=self.use_amp):
                 if "gene_features" in batch:
                     logits = self.model(
-                        batch["gene_features"].to(self.device),
-                        batch["gene_mask"].to(self.device),
+                        batch["gene_features"].to(self.device, non_blocking=True),
+                        batch["gene_mask"].to(self.device, non_blocking=True),
                     )
                 else:
-                    logits = self.model(batch["genome"].to(self.device))
+                    logits = self.model(batch["genome"].to(self.device, non_blocking=True))
                 loss = self.criterion(logits, labels)
                 loss = loss / self.grad_accum_steps
 
@@ -290,16 +293,16 @@ class ClassifierTrainer:
         n_batches = 0
 
         for batch in self.val_loader:
-            labels = batch["labels"].to(self.device)
+            labels = batch["labels"].to(self.device, non_blocking=True)
 
             with torch.amp.autocast("cuda", enabled=self.use_amp):
                 if "gene_features" in batch:
                     logits = self.model(
-                        batch["gene_features"].to(self.device),
-                        batch["gene_mask"].to(self.device),
+                        batch["gene_features"].to(self.device, non_blocking=True),
+                        batch["gene_mask"].to(self.device, non_blocking=True),
                     )
                 else:
-                    logits = self.model(batch["genome"].to(self.device))
+                    logits = self.model(batch["genome"].to(self.device, non_blocking=True))
                 loss = self.criterion(logits, labels)
             total_loss += loss.item()
             n_batches += 1

@@ -17,12 +17,12 @@ def main() -> None:
         help="Limit number of BiGG models to download (default: all)",
     )
     parser.add_argument(
-        "--samples-per-org", type=int, default=500,
-        help="Training samples per organism (default: 500)",
+        "--samples-per-org", type=int, default=200,
+        help="Training samples per organism (default: 200)",
     )
     parser.add_argument(
-        "--eval-samples-per-org", type=int, default=100,
-        help="Val/test samples per organism (default: 100)",
+        "--eval-samples-per-org", type=int, default=50,
+        help="Val/test samples per organism (default: 50)",
     )
     parser.add_argument(
         "--min-organisms", type=int, default=2,

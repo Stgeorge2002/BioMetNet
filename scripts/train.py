@@ -41,13 +41,13 @@ def main() -> None:
         mo_config = json.loads((data_dir / "config.json").read_text())
 
         config = TrainingConfig(
-            batch_size=4,
-            lr=1e-4,
-            epochs=60,
-            warmup_steps=500,
-            log_every=50,
+            batch_size=16,
+            lr=3e-4,
+            epochs=30,
+            warmup_steps=200,
+            log_every=20,
         )
-        grad_accum_steps = 8  # effective batch = 4 * 8 = 32
+        grad_accum_steps = 2  # effective batch = 16 * 2 = 32
 
         print("Loading multi-organism dataset...")
         org_feat_path = data_dir / "organism_features.pt"
@@ -62,10 +62,12 @@ def main() -> None:
         train_loader = DataLoader(
             train_ds, batch_size=config.batch_size,
             shuffle=True, collate_fn=multi_org_collate_fn,
+            num_workers=4, pin_memory=True, persistent_workers=True,
         )
         val_loader = DataLoader(
             val_ds, batch_size=config.batch_size,
             shuffle=False, collate_fn=multi_org_collate_fn,
+            num_workers=2, pin_memory=True, persistent_workers=True,
         )
 
         model = MultiOrganismClassifier(
@@ -80,6 +82,11 @@ def main() -> None:
         )
         n_params = sum(p.numel() for p in model.parameters())
         print(f"MultiOrganismClassifier parameters: {n_params:,}")
+
+        # Compile for faster training (PyTorch 2+)
+        if hasattr(torch, "compile"):
+            model = torch.compile(model)
+            print("Using torch.compile for acceleration")
 
         resume_ckpt = None
         if args.resume:

@@ -424,39 +424,51 @@ def prepare_multi_organism_dataset(
     org_features: list[torch.Tensor] = []
     org_n_genes: list[int] = []
 
+    # Pre-compute features (fast)
+    for idx in range(n_org):
+        feats = extract_gene_features(organisms[idx], feature_vocabs)
+        org_features.append(feats)
+        org_n_genes.append(len(organisms[idx]["genes"]))
+
+    # Build task list for sample generation
+    tasks: list[tuple[int, str, int, int]] = []  # (idx, split, n_samp, seed)
+    for idx in range(n_org):
+        if idx in train_idx:
+            tasks.append((idx, "train", samples_per_train_org, seed + idx))
+        elif idx in val_idx:
+            tasks.append((idx, "val", samples_per_eval_org, seed + idx + 10000))
+        else:
+            tasks.append((idx, "test", samples_per_eval_org, seed + idx + 20000))
+
     split_data: dict[str, dict[str, list]] = {
         "train": {"org_idx": [], "presence": [], "labels": []},
         "val": {"org_idx": [], "presence": [], "labels": []},
         "test": {"org_idx": [], "presence": [], "labels": []},
     }
 
-    for idx in range(n_org):
-        org = organisms[idx]
-        feats = extract_gene_features(org, feature_vocabs)
-        org_features.append(feats)
-        org_n_genes.append(len(org["genes"]))
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    import os
 
-        if idx in train_idx:
-            split, n_samp = "train", samples_per_train_org
-            s_seed = seed + idx
-        elif idx in val_idx:
-            split, n_samp = "val", samples_per_eval_org
-            s_seed = seed + idx + 10000
-        else:
-            split, n_samp = "test", samples_per_eval_org
-            s_seed = seed + idx + 20000
+    n_workers = min(os.cpu_count() or 1, 8)
 
+    def _gen_task(args):
+        idx, split, n_samp, s_seed = args
         samples = generate_organism_samples(
-            org, uni_rxns, n_samples=n_samp, seed=s_seed,
+            organisms[idx], uni_rxns, n_samples=n_samp, seed=s_seed,
         )
+        return idx, split, n_samp, samples
 
-        for s in samples:
-            split_data[split]["org_idx"].append(idx)
-            split_data[split]["presence"].append(s["presence"])
-            split_data[split]["labels"].append(s["labels"])
-
-        print(f"  {model_ids[idx]}: {n_samp} {split} samples "
-              f"({len(org['genes'])} genes, {len(org['reactions'])} rxns)")
+    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        futures = {pool.submit(_gen_task, t): t for t in tasks}
+        for future in as_completed(futures):
+            idx, split, n_samp, samples = future.result()
+            for s in samples:
+                split_data[split]["org_idx"].append(idx)
+                split_data[split]["presence"].append(s["presence"])
+                split_data[split]["labels"].append(s["labels"])
+            print(f"  {model_ids[idx]}: {n_samp} {split} samples "
+                  f"({len(organisms[idx]['genes'])} genes, "
+                  f"{len(organisms[idx]['reactions'])} rxns)")
 
     # Save organism features (use weights_only=False compatible format)
     torch.save({
@@ -497,11 +509,11 @@ def prepare_multi_organism_dataset(
         "n_train_organisms": len(train_idx),
         "n_val_organisms": len(val_idx),
         "n_test_organisms": len(test_idx),
-        "d_model": 512,
+        "d_model": 256,
         "n_heads": 8,
-        "n_encoder_layers": 4,
-        "n_cross_layers": 4,
-        "ff_dim": 2048,
+        "n_encoder_layers": 2,
+        "n_cross_layers": 2,
+        "ff_dim": 1024,
     }
     (out_dir / "config.json").write_text(json.dumps(config, indent=2))
     (out_dir / "universal_reactions.json").write_text(
