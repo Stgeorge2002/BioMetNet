@@ -1,5 +1,5 @@
-data/
-checkpoints/
+/data/
+/checkpoints/
 __pycache__/
 *.pyc
 .venv/
@@ -10,3 +10,7 @@ build/
 *.pt
 *.pth
 wandb/
+results/
+*.log
+train_v2.log
+train_classifier.log
