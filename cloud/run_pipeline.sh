@@ -9,6 +9,7 @@ set -e
 export PATH="$HOME/.local/bin:$PATH"
 export UV_PROJECT_ENVIRONMENT=/root/.venv
 export UV_LINK_MODE=copy
+export PYTORCH_ALLOC_CONF=expandable_segments:True
 cd /workspace/BioMetNet
 
 # Ensure package is up to date in the venv
