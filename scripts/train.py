@@ -83,11 +83,6 @@ def main() -> None:
         n_params = sum(p.numel() for p in model.parameters())
         print(f"MultiOrganismClassifier parameters: {n_params:,}")
 
-        # Compile for faster training (PyTorch 2+)
-        if hasattr(torch, "compile"):
-            model = torch.compile(model)
-            print("Using torch.compile for acceleration")
-
         resume_ckpt = None
         if args.resume:
             ckpt_path = Path(config.checkpoint_dir) / "best.pt"
