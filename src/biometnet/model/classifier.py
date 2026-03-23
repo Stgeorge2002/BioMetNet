@@ -15,6 +15,7 @@ class CrossAttentionBlock(nn.Module):
         self.cross_attn = nn.MultiheadAttention(
             d_model, n_heads, dropout=dropout, batch_first=True,
         )
+        self.attn_dropout = nn.Dropout(dropout)
         self.cross_norm = nn.LayerNorm(d_model)
         self.ffn = nn.Sequential(
             nn.Linear(d_model, ff_dim),
@@ -22,6 +23,7 @@ class CrossAttentionBlock(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(ff_dim, d_model),
         )
+        self.ffn_dropout = nn.Dropout(dropout)
         self.ffn_norm = nn.LayerNorm(d_model)
 
     def forward(
@@ -31,8 +33,8 @@ class CrossAttentionBlock(nn.Module):
         key_padding_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         attended, _ = self.cross_attn(queries, kv, kv, key_padding_mask=key_padding_mask)
-        queries = self.cross_norm(queries + attended)
-        queries = self.ffn_norm(queries + self.ffn(queries))
+        queries = self.cross_norm(queries + self.attn_dropout(attended))
+        queries = self.ffn_norm(queries + self.ffn_dropout(self.ffn(queries)))
         return queries
 
 
@@ -119,7 +121,12 @@ class GenomeClassifier(nn.Module):
             probs: (batch, n_reactions) sigmoid probabilities
             active: (batch, n_reactions) boolean mask
         """
+        was_training = self.training
         self.eval()
-        logits = self.forward(genome)
-        probs = torch.sigmoid(logits)
-        return probs, probs > threshold
+        try:
+            logits = self.forward(genome)
+            probs = torch.sigmoid(logits)
+            return probs, probs > threshold
+        finally:
+            if was_training:
+                self.train()

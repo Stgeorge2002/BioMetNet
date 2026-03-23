@@ -43,6 +43,7 @@ class MetabolicDecoder(nn.Module):
         memory: torch.Tensor,
         tgt_mask: torch.Tensor | None = None,
         tgt_key_padding_mask: torch.Tensor | None = None,
+        memory_key_padding_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -50,6 +51,7 @@ class MetabolicDecoder(nn.Module):
             memory: (batch, src_len, d_model) encoder output
             tgt_mask: causal mask (tgt_len, tgt_len)
             tgt_key_padding_mask: (batch, tgt_len) True where padded
+            memory_key_padding_mask: (batch, src_len) True where encoder padded
         Returns:
             logits: (batch, tgt_len, vocab_size)
         """
@@ -60,6 +62,7 @@ class MetabolicDecoder(nn.Module):
             memory,
             tgt_mask=tgt_mask,
             tgt_key_padding_mask=tgt_key_padding_mask,
+            memory_key_padding_mask=memory_key_padding_mask,
         )
         return self.output_proj(x)
 

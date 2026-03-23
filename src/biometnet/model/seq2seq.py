@@ -54,7 +54,8 @@ class Seq2SeqModel(nn.Module):
         Returns:
             logits: (batch, tgt_len, vocab_size)
         """
-        memory = self.encoder(genome)
+        gene_mask = genome == 0  # True where gene is absent
+        memory = self.encoder(genome, padding_mask=gene_mask)
         tgt_len = tgt_tokens.size(1)
         tgt_mask = self.decoder.generate_causal_mask(tgt_len, tgt_tokens.device)
         tgt_pad_mask = tgt_tokens == 0  # PAD token id = 0
@@ -63,6 +64,7 @@ class Seq2SeqModel(nn.Module):
             memory,
             tgt_mask=tgt_mask,
             tgt_key_padding_mask=tgt_pad_mask,
+            memory_key_padding_mask=gene_mask,
         )
         return logits
 
@@ -84,9 +86,24 @@ class Seq2SeqModel(nn.Module):
         Returns:
             List of token id lists, one per batch element.
         """
+        was_training = self.training
         self.eval()
+        try:
+            return self._generate_inner(genome, bos_id, eos_id, max_len)
+        finally:
+            if was_training:
+                self.train()
+
+    def _generate_inner(
+        self,
+        genome: torch.Tensor,
+        bos_id: int,
+        eos_id: int,
+        max_len: int,
+    ) -> list[list[int]]:
         batch_size = genome.size(0)
-        memory = self.encoder(genome)
+        gene_mask = genome == 0
+        memory = self.encoder(genome, padding_mask=gene_mask)
 
         # Start with BOS
         generated = torch.full(
@@ -98,7 +115,10 @@ class Seq2SeqModel(nn.Module):
             tgt_mask = self.decoder.generate_causal_mask(
                 generated.size(1), genome.device
             )
-            logits = self.decoder(generated, memory, tgt_mask=tgt_mask)
+            logits = self.decoder(
+                generated, memory, tgt_mask=tgt_mask,
+                memory_key_padding_mask=gene_mask,
+            )
             next_token = logits[:, -1, :].argmax(dim=-1)  # (batch,)
             next_token = next_token.masked_fill(finished, 0)  # pad finished seqs
             generated = torch.cat(

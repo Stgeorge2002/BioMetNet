@@ -59,8 +59,9 @@ class GenomeEncoder(nn.Module):
         B, N = genome.shape
         gene_ids = torch.arange(N, device=genome.device)
         x = self.gene_embedding(gene_ids).unsqueeze(0).expand(B, -1, -1)
-        x = x * genome.unsqueeze(-1)  # gate: absent genes → zero vector
         x = self.pos_enc(x)
+        # Gate AFTER positional encoding so absent genes are truly zero
+        x = x * genome.unsqueeze(-1)
         # padding_mask: True for absent genes → ignored in self-attention
         x = self.transformer(x, src_key_padding_mask=padding_mask)
         return x

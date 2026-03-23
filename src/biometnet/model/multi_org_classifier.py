@@ -92,7 +92,12 @@ class MultiOrganismClassifier(nn.Module):
             probs: (B, n_reactions) sigmoid probabilities
             active: (B, n_reactions) boolean mask
         """
+        was_training = self.training
         self.eval()
-        logits = self.forward(gene_features, gene_mask)
-        probs = torch.sigmoid(logits)
-        return probs, probs > threshold
+        try:
+            logits = self.forward(gene_features, gene_mask)
+            probs = torch.sigmoid(logits)
+            return probs, probs > threshold
+        finally:
+            if was_training:
+                self.train()
