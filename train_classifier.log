@@ -1,0 +1,126 @@
+Loading ecoli data...
+Reactions: 2266, Train: 2400, Val: 300
+Classifier parameters: 3,402,970
+Training classifier on cuda for 30 epochs
+Train batches: 150, Val batches: 19
+  step    50 | loss 0.3159 | lr 7.50e-05
+  step   100 | loss 0.2527 | lr 1.50e-04
+  step   150 | loss 0.2299 | lr 2.25e-04
+Epoch   1 | train_loss 0.2749 | val_loss 0.2354 *
+  step   200 | loss 0.2648 | lr 3.00e-04
+  step   250 | loss 0.1720 | lr 3.00e-04
+  step   300 | loss 0.1999 | lr 3.00e-04
+Epoch   2 | train_loss 0.2334 | val_loss 0.2342 *
+  step   350 | loss 0.2032 | lr 2.99e-04
+  step   400 | loss 0.2298 | lr 2.98e-04
+  step   450 | loss 0.2522 | lr 2.98e-04
+Epoch   3 | train_loss 0.2326 | val_loss 0.2341 *
+  step   500 | loss 0.2219 | lr 2.96e-04
+  step   550 | loss 0.2496 | lr 2.95e-04
+  step   600 | loss 0.2541 | lr 2.94e-04
+Epoch   4 | train_loss 0.2323 | val_loss 0.2335 *
+  step   650 | loss 0.2368 | lr 2.92e-04
+  step   700 | loss 0.2359 | lr 2.90e-04
+  step   750 | loss 0.2079 | lr 2.88e-04
+Epoch   5 | train_loss 0.2319 | val_loss 0.2336
+  step   800 | loss 0.1981 | lr 2.86e-04
+  step   850 | loss 0.2465 | lr 2.83e-04
+  step   900 | loss 0.2107 | lr 2.81e-04
+Epoch   6 | train_loss 0.2318 | val_loss 0.2332 *
+  step   950 | loss 0.2517 | lr 2.78e-04
+  step  1000 | loss 0.1980 | lr 2.75e-04
+  step  1050 | loss 0.2048 | lr 2.72e-04
+Epoch   7 | train_loss 0.2316 | val_loss 0.2334
+  step  1100 | loss 0.2501 | lr 2.69e-04
+  step  1150 | loss 0.2093 | lr 2.65e-04
+  step  1200 | loss 0.2072 | lr 2.62e-04
+Epoch   8 | train_loss 0.2316 | val_loss 0.2334
+  step  1250 | loss 0.2125 | lr 2.58e-04
+  step  1300 | loss 0.2215 | lr 2.54e-04
+  step  1350 | loss 0.2460 | lr 2.50e-04
+Epoch   9 | train_loss 0.2315 | val_loss 0.2336
+  step  1400 | loss 0.2317 | lr 2.46e-04
+  step  1450 | loss 0.2413 | lr 2.42e-04
+  step  1500 | loss 0.2246 | lr 2.37e-04
+Epoch  10 | train_loss 0.2313 | val_loss 0.2333
+  step  1550 | loss 0.2474 | lr 2.33e-04
+  step  1600 | loss 0.2513 | lr 2.28e-04
+  step  1650 | loss 0.2113 | lr 2.23e-04
+Epoch  11 | train_loss 0.2312 | val_loss 0.2339
+  step  1700 | loss 0.2599 | lr 2.19e-04
+  step  1750 | loss 0.2404 | lr 2.14e-04
+  step  1800 | loss 0.2112 | lr 2.09e-04
+Epoch  12 | train_loss 0.2312 | val_loss 0.2337
+  step  1850 | loss 0.2471 | lr 2.04e-04
+  step  1900 | loss 0.2712 | lr 1.98e-04
+  step  1950 | loss 0.2315 | lr 1.93e-04
+Epoch  13 | train_loss 0.2312 | val_loss 0.2336
+  step  2000 | loss 0.2486 | lr 1.88e-04
+  step  2050 | loss 0.2183 | lr 1.83e-04
+  step  2100 | loss 0.2285 | lr 1.77e-04
+Epoch  14 | train_loss 0.2310 | val_loss 0.2332
+  step  2150 | loss 0.2476 | lr 1.72e-04
+  step  2200 | loss 0.1827 | lr 1.66e-04
+  step  2250 | loss 0.2631 | lr 1.61e-04
+Epoch  15 | train_loss 0.2308 | val_loss 0.2336
+  step  2300 | loss 0.1785 | lr 1.55e-04
+  step  2350 | loss 0.2471 | lr 1.50e-04
+  step  2400 | loss 0.2477 | lr 1.45e-04
+Epoch  16 | train_loss 0.2307 | val_loss 0.2326 *
+  step  2450 | loss 0.2188 | lr 1.39e-04
+  step  2500 | loss 0.2267 | lr 1.34e-04
+  step  2550 | loss 0.2078 | lr 1.28e-04
+Epoch  17 | train_loss 0.2297 | val_loss 0.2302 *
+  step  2600 | loss 0.2393 | lr 1.23e-04
+  step  2650 | loss 0.2271 | lr 1.17e-04
+  step  2700 | loss 0.2550 | lr 1.12e-04
+Epoch  18 | train_loss 0.2294 | val_loss 0.2314
+  step  2750 | loss 0.2360 | lr 1.07e-04
+  step  2800 | loss 0.2355 | lr 1.02e-04
+  step  2850 | loss 0.2384 | lr 9.64e-05
+Epoch  19 | train_loss 0.2267 | val_loss 0.2281 *
+  step  2900 | loss 0.2175 | lr 9.13e-05
+  step  2950 | loss 0.2603 | lr 8.63e-05
+  step  3000 | loss 0.2101 | lr 8.14e-05
+Epoch  20 | train_loss 0.2244 | val_loss 0.2260 *
+  step  3050 | loss 0.2233 | lr 7.66e-05
+  step  3100 | loss 0.2130 | lr 7.19e-05
+  step  3150 | loss 0.2598 | lr 6.72e-05
+Epoch  21 | train_loss 0.2232 | val_loss 0.2259 *
+  step  3200 | loss 0.2246 | lr 6.27e-05
+  step  3250 | loss 0.2384 | lr 5.83e-05
+  step  3300 | loss 0.2225 | lr 5.40e-05
+Epoch  22 | train_loss 0.2222 | val_loss 0.2246 *
+  step  3350 | loss 0.2149 | lr 4.99e-05
+  step  3400 | loss 0.1943 | lr 4.59e-05
+  step  3450 | loss 0.2700 | lr 4.20e-05
+Epoch  23 | train_loss 0.2216 | val_loss 0.2242 *
+  step  3500 | loss 0.2255 | lr 3.83e-05
+  step  3550 | loss 0.2212 | lr 3.47e-05
+  step  3600 | loss 0.2223 | lr 3.13e-05
+Epoch  24 | train_loss 0.2212 | val_loss 0.2239 *
+  step  3650 | loss 0.2134 | lr 2.80e-05
+  step  3700 | loss 0.2055 | lr 2.49e-05
+  step  3750 | loss 0.2465 | lr 2.20e-05
+Epoch  25 | train_loss 0.2208 | val_loss 0.2236 *
+  step  3800 | loss 0.2376 | lr 1.92e-05
+  step  3850 | loss 0.2148 | lr 1.66e-05
+  step  3900 | loss 0.2274 | lr 1.42e-05
+Epoch  26 | train_loss 0.2206 | val_loss 0.2236 *
+  step  3950 | loss 0.2107 | lr 1.19e-05
+  step  4000 | loss 0.2327 | lr 9.90e-06
+  step  4050 | loss 0.2192 | lr 8.03e-06
+Epoch  27 | train_loss 0.2203 | val_loss 0.2234 *
+  step  4100 | loss 0.2395 | lr 6.36e-06
+  step  4150 | loss 0.2633 | lr 4.88e-06
+  step  4200 | loss 0.1871 | lr 3.59e-06
+Epoch  28 | train_loss 0.2202 | val_loss 0.2234 *
+  step  4250 | loss 0.2042 | lr 2.50e-06
+  step  4300 | loss 0.2183 | lr 1.60e-06
+  step  4350 | loss 0.2265 | lr 9.00e-07
+Epoch  29 | train_loss 0.2201 | val_loss 0.2233 *
+  step  4400 | loss 0.2044 | lr 4.00e-07
+  step  4450 | loss 0.2021 | lr 1.00e-07
+  step  4500 | loss 0.2089 | lr 0.00e+00
+Epoch  30 | train_loss 0.2200 | val_loss 0.2233 *
+Done. Best val_loss: 0.2233
