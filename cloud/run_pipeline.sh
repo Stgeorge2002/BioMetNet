@@ -7,6 +7,8 @@
 set -e
 
 export PATH="$HOME/.local/bin:$PATH"
+export UV_PROJECT_ENVIRONMENT=/root/.venv
+export UV_LINK_MODE=copy
 cd /workspace/BioMetNet
 
 MAX_MODELS="${1:---max-models}"
