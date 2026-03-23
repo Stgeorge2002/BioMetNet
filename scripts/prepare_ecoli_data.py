@@ -21,8 +21,7 @@ from biometnet.data.metabolic_vocab import MetabolicVocab
 ECOLI_MODEL_CONFIG = {
     "d_model": 256,
     "n_heads": 8,
-    "n_encoder_layers": 2,
-    "n_cross_layers": 3,
+    "n_encoder_layers": 4,
     "ff_dim": 512,
 }
 

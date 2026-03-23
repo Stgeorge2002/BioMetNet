@@ -218,8 +218,13 @@ def main() -> None:
     else:
         # Legacy seq2seq path
         if model_config is not None:
+            seq2seq_keys = {
+                "n_genes", "d_model", "n_heads", "n_encoder_layers",
+                "n_decoder_layers", "ff_dim", "max_seq_len",
+            }
+            s2s_config = {k: v for k, v in model_config.items() if k in seq2seq_keys}
             model = Seq2SeqModel(
-                vocab_size=len(vocab), dropout=0.0, **model_config,
+                vocab_size=len(vocab), dropout=0.0, **s2s_config,
             )
         else:
             model = Seq2SeqModel(

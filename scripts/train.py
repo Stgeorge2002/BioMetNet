@@ -141,13 +141,20 @@ def main() -> None:
             train_ds = MultiLabelDataset(train_samples, reaction_list)
             val_ds = MultiLabelDataset(val_samples, reaction_list)
 
+        use_gpu = config.resolve_device() == "cuda"
         train_loader = DataLoader(
             train_ds, batch_size=config.batch_size,
             shuffle=True, collate_fn=multilabel_collate_fn,
+            num_workers=4 if use_gpu else 0,
+            pin_memory=use_gpu,
+            persistent_workers=use_gpu,
         )
         val_loader = DataLoader(
             val_ds, batch_size=config.batch_size,
             shuffle=False, collate_fn=multilabel_collate_fn,
+            num_workers=2 if use_gpu else 0,
+            pin_memory=use_gpu,
+            persistent_workers=use_gpu,
         )
 
         n_genes = model_config["n_genes"] if model_config else config.model.n_genes
@@ -185,6 +192,7 @@ def main() -> None:
         trainer = ClassifierTrainer(
             model, train_loader, val_loader, config,
             pos_weight=None, resume_checkpoint=resume_ckpt,
+            use_amp=use_gpu,
         )
         trainer.train()
 
@@ -203,10 +211,17 @@ def main() -> None:
         )
 
         if model_config is not None:
+            # Filter to only keys Seq2SeqModel accepts (config may
+            # contain classifier-only keys like n_cross_layers)
+            seq2seq_keys = {
+                "n_genes", "d_model", "n_heads", "n_encoder_layers",
+                "n_decoder_layers", "ff_dim", "max_seq_len",
+            }
+            s2s_config = {k: v for k, v in model_config.items() if k in seq2seq_keys}
             model = Seq2SeqModel(
                 vocab_size=len(vocab),
                 dropout=config.model.dropout,
-                **model_config,
+                **s2s_config,
             )
         else:
             model = Seq2SeqModel(
