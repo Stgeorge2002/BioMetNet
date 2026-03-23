@@ -11,6 +11,9 @@ export UV_PROJECT_ENVIRONMENT=/root/.venv
 export UV_LINK_MODE=copy
 cd /workspace/BioMetNet
 
+# Ensure package is up to date in the venv
+uv sync
+
 MAX_MODELS="${1:---max-models}"
 MAX_MODELS_VAL="${2:-}"
 
