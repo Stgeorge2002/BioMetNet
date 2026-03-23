@@ -39,6 +39,10 @@ def main() -> None:
     if args.dataset == "ecoli_strains":
         data_dir = Path("data/processed/ecoli_strains")
         mo_config = json.loads((data_dir / "config.json").read_text())
+        feature_vocabs = json.loads((data_dir / "feature_vocabs.json").read_text())
+        universal_reactions = json.loads(
+            (data_dir / "universal_reactions.json").read_text(),
+        )
 
         config = TrainingConfig(
             batch_size=16,
@@ -81,6 +85,13 @@ def main() -> None:
             num_workers=2, pin_memory=True, persistent_workers=True,
         )
 
+        # Load pre-computed reaction metadata features for query initialization
+        rxn_feat_path = data_dir / "reaction_features.pt"
+        rxn_features = None
+        if rxn_feat_path.exists():
+            rxn_features = torch.load(rxn_feat_path, map_location="cpu", weights_only=True)
+            print(f"  Reaction features loaded: {rxn_features.shape}")
+
         model = EcoliStrainClassifier(
             n_features=mo_config["n_features"],
             n_reactions=mo_config["n_universal_reactions"],
@@ -88,8 +99,10 @@ def main() -> None:
             n_heads=mo_config.get("n_heads", 8),
             n_encoder_layers=mo_config.get("n_encoder_layers", 2),
             n_cross_layers=mo_config.get("n_cross_layers", 2),
+            n_self_layers=mo_config.get("n_self_layers", 1),
             ff_dim=mo_config.get("ff_dim", 512),
             dropout=0.2,
+            reaction_features=rxn_features,
         )
         n_params = sum(p.numel() for p in model.parameters())
         print(f"EcoliStrainClassifier parameters: {n_params:,}")

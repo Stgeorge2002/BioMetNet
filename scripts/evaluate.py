@@ -57,6 +57,12 @@ def main() -> None:
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']} "
               f"(val_loss={checkpoint['val_loss']:.4f})")
 
+        # Load reaction features for query initialization (A4)
+        rxn_features = None
+        rxn_feat_path = data_dir / "reaction_features.pt"
+        if rxn_feat_path.exists():
+            rxn_features = torch.load(rxn_feat_path, map_location="cpu", weights_only=True)
+
         model = EcoliStrainClassifier(
             n_features=mo_config["n_features"],
             n_reactions=mo_config["n_universal_reactions"],
@@ -64,8 +70,10 @@ def main() -> None:
             n_heads=mo_config.get("n_heads", 8),
             n_encoder_layers=mo_config.get("n_encoder_layers", 2),
             n_cross_layers=mo_config.get("n_cross_layers", 2),
+            n_self_layers=mo_config.get("n_self_layers", 1),
             ff_dim=mo_config.get("ff_dim", 512),
             dropout=0.0,
+            reaction_features=rxn_features,
         )
         model.load_state_dict(checkpoint["model_state_dict"])
         model.to(device)

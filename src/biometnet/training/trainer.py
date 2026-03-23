@@ -228,6 +228,9 @@ class ClassifierTrainer:
         self.criterion = FocalBCELoss(
             gamma=2.0, pos_weight=pw, label_smoothing=0.05,
         ).to(self.device)
+        # Clean BCE for validation — no focal weighting, pos_weight, or
+        # label smoothing so val_loss is an unbiased estimate of performance.
+        self.val_criterion = nn.BCEWithLogitsLoss().to(self.device)
         self.optimizer = torch.optim.AdamW(
             model.parameters(), lr=config.lr, weight_decay=config.weight_decay
         )
@@ -319,7 +322,7 @@ class ClassifierTrainer:
                     )
                 else:
                     logits = self.model(batch["genome"].to(self.device, non_blocking=True))
-                loss = self.criterion(logits, labels)
+                loss = self.val_criterion(logits, labels)
             total_loss += loss.item()
             n_batches += 1
 

@@ -155,8 +155,9 @@ def _extract_genes_from_gpr(rule: str) -> set[str]:
 
 
 def build_feature_vocabs(organisms: list[dict]) -> dict[str, Any]:
-    """Build EC level-2 and subsystem vocabularies from all organisms."""
-    ec_set: set[str] = set()
+    """Build EC level-2, EC level-4, and subsystem vocabularies."""
+    ec2_set: set[str] = set()
+    ec4_set: set[str] = set()
     sub_set: set[str] = set()
 
     for org in organisms:
@@ -164,18 +165,24 @@ def build_feature_vocabs(organisms: list[dict]) -> dict[str, Any]:
             for ec in ec_list:
                 parts = ec.split(".")
                 if len(parts) >= 2:
-                    ec_set.add(f"{parts[0]}.{parts[1]}")
+                    ec2_set.add(f"{parts[0]}.{parts[1]}")
+                if len(parts) == 4 and all(p != "-" for p in parts):
+                    ec4_set.add(ec)
         for sub in org["reaction_subsystem"].values():
             sub_set.add(sub)
 
-    ec_vocab = {ec: i for i, ec in enumerate(sorted(ec_set))}
+    ec2_vocab = {ec: i for i, ec in enumerate(sorted(ec2_set))}
+    ec4_vocab = {ec: i for i, ec in enumerate(sorted(ec4_set))}
     sub_vocab = {sub: i for i, sub in enumerate(sorted(sub_set))}
-    n_feat = len(ec_vocab) + len(sub_vocab) + 2  # +2 scalar features
+    # features: EC2 multi-hot + EC4 multi-hot + subsystem multi-hot + 4 scalars
+    n_feat = len(ec2_vocab) + len(ec4_vocab) + len(sub_vocab) + 4
 
     return {
-        "ec_vocab": ec_vocab,
+        "ec_vocab": ec2_vocab,
+        "ec4_vocab": ec4_vocab,
         "subsystem_vocab": sub_vocab,
-        "n_ec": len(ec_vocab),
+        "n_ec": len(ec2_vocab),
+        "n_ec4": len(ec4_vocab),
         "n_subsystem": len(sub_vocab),
         "n_features": n_feat,
     }
@@ -204,17 +211,22 @@ def extract_gene_features(
 
     Features per gene:
       - EC level-2 multi-hot (n_ec dims)
+      - EC level-4 multi-hot (n_ec4 dims)
       - Subsystem multi-hot (n_sub dims)
       - log(1 + n_reactions) scalar
       - n_reactions / total_reactions fraction
+      - n_unique_subsystems / total_subsystems (breadth)
+      - is_multi_functional (participates in >1 subsystem)
     """
     genes = organism["genes"]
     gpr_rules = organism["gpr_rules"]
     rxn_ec = organism["reaction_ec"]
     rxn_sub = organism["reaction_subsystem"]
-    ec_vocab = feature_vocabs["ec_vocab"]
+    ec2_vocab = feature_vocabs["ec_vocab"]
+    ec4_vocab = feature_vocabs.get("ec4_vocab", {})
     sub_vocab = feature_vocabs["subsystem_vocab"]
-    n_ec = feature_vocabs["n_ec"]
+    n_ec2 = feature_vocabs["n_ec"]
+    n_ec4 = feature_vocabs.get("n_ec4", 0)
     n_sub = feature_vocabs["n_subsystem"]
     n_feat = feature_vocabs["n_features"]
 
@@ -228,9 +240,11 @@ def extract_gene_features(
                 gene_rxns[gid].append(entry["id"])
 
     total_rxns = max(len(gpr_rules), 1)
+    total_subs = max(len(sub_vocab), 1)
 
     for i, gene in enumerate(genes):
         rxns = gene_rxns[gene]
+        offset = 0
 
         # EC level-2 multi-hot
         for rxn_id in rxns:
@@ -238,18 +252,31 @@ def extract_gene_features(
                 parts = ec.split(".")
                 if len(parts) >= 2:
                     key = f"{parts[0]}.{parts[1]}"
-                    if key in ec_vocab:
-                        features[i, ec_vocab[key]] = 1.0
+                    if key in ec2_vocab:
+                        features[i, offset + ec2_vocab[key]] = 1.0
+        offset += n_ec2
+
+        # EC level-4 multi-hot
+        for rxn_id in rxns:
+            for ec in rxn_ec.get(rxn_id, []):
+                if ec in ec4_vocab:
+                    features[i, offset + ec4_vocab[ec]] = 1.0
+        offset += n_ec4
 
         # Subsystem multi-hot
+        gene_subs: set[str] = set()
         for rxn_id in rxns:
             sub = rxn_sub.get(rxn_id)
             if sub and sub in sub_vocab:
-                features[i, n_ec + sub_vocab[sub]] = 1.0
+                features[i, offset + sub_vocab[sub]] = 1.0
+                gene_subs.add(sub)
+        offset += n_sub
 
-        # Scalars
-        features[i, n_ec + n_sub] = math.log1p(len(rxns))
-        features[i, n_ec + n_sub + 1] = len(rxns) / total_rxns
+        # Scalar features
+        features[i, offset] = math.log1p(len(rxns))
+        features[i, offset + 1] = len(rxns) / total_rxns
+        features[i, offset + 2] = len(gene_subs) / total_subs
+        features[i, offset + 3] = 1.0 if len(gene_subs) > 1 else 0.0
 
     return features
 
@@ -319,6 +346,23 @@ def _compile_gpr(rule: str, gene_to_idx: dict[str, int]):
     return _eval_tree, tree
 
 
+def _build_subsystem_gene_map(
+    organism: dict,
+) -> dict[str, list[int]]:
+    """Map each subsystem to the gene indices that participate in it."""
+    genes = organism["genes"]
+    gene_to_idx = {g: i for i, g in enumerate(genes)}
+    sub_genes: dict[str, set[int]] = {}
+    for entry in organism["gpr_rules"]:
+        sub = organism["reaction_subsystem"].get(entry["id"], "")
+        if not sub:
+            continue
+        for gid in _extract_genes_from_gpr(entry["gpr"]):
+            if gid in gene_to_idx:
+                sub_genes.setdefault(sub, set()).add(gene_to_idx[gid])
+    return {s: sorted(gs) for s, gs in sub_genes.items()}
+
+
 def generate_organism_samples(
     organism: dict,
     universal_reactions: list[str],
@@ -326,10 +370,15 @@ def generate_organism_samples(
     seed: int = 42,
     noise_rate: float = 0.02,
 ) -> list[dict]:
-    """Generate dropout-augmented samples for one organism.
+    """Generate dropout-augmented samples using a mixture of strategies.
+
+    Strategies (proportional allocation):
+      - 30% moderate dropout (Beta(2,5) centered ~0.2-0.4)
+      - 30% subsystem-level dropout (remove all genes in N random subsystems)
+      - 20% block dropout (contiguous genomic segments removed)
+      - 20% uniform dropout (original strategy, for diversity)
 
     Returns list of {presence: ByteTensor, labels: ByteTensor}.
-    Uses numpy for fast vectorized operations and pre-compiled GPR trees.
     """
     import numpy as np
 
@@ -340,37 +389,213 @@ def generate_organism_samples(
     n_uni = len(universal_reactions)
     gene_to_idx = {g: i for i, g in enumerate(genes)}
 
-    # Pre-compile GPR rules: parse strings once
-    compiled_rules: list[tuple[int, Any, Any]] = []  # (uni_rxn_idx, eval_fn, tree)
+    # Pre-compile GPR rules
+    compiled_rules: list[tuple[int, Any, Any]] = []
     for entry in gpr_rules:
         if entry["id"] in uni_idx:
             eval_fn, tree = _compile_gpr(entry["gpr"], gene_to_idx)
             compiled_rules.append((uni_idx[entry["id"]], eval_fn, tree))
 
+    # Build subsystem -> gene index map for subsystem dropout
+    sub_gene_map = _build_subsystem_gene_map(organism)
+    sub_names = list(sub_gene_map.keys())
+
     rng = np.random.RandomState(seed)
 
-    samples = []
-    for _ in range(n_samples):
-        dropout = rng.random()
-        present = rng.random(n_genes) > dropout  # bool array
+    # Allocate samples to strategies
+    n_moderate = int(n_samples * 0.30)
+    n_subsystem = int(n_samples * 0.30)
+    n_block = int(n_samples * 0.20)
+    n_uniform = n_samples - n_moderate - n_subsystem - n_block
 
+    samples = []
+
+    def _make_sample(present: np.ndarray) -> dict:
         # Noise flips
         if noise_rate > 0:
             flip = rng.random(n_genes) < noise_rate
-            present = present ^ flip  # XOR flips
-
-        # Evaluate pre-compiled rules
+            present_noisy = present ^ flip
+        else:
+            present_noisy = present
         labels = np.zeros(n_uni, dtype=np.uint8)
         for rxn_idx, eval_fn, tree in compiled_rules:
-            if eval_fn(tree, present):
+            if eval_fn(tree, present_noisy):
                 labels[rxn_idx] = 1
-
-        samples.append({
-            "presence": torch.from_numpy(present.astype(np.uint8)),
+        return {
+            "presence": torch.from_numpy(present_noisy.astype(np.uint8)),
             "labels": torch.from_numpy(labels),
-        })
+        }
 
+    # Strategy 1: Moderate dropout via Beta(2, 5) — peaks around 0.25
+    for _ in range(n_moderate):
+        dropout = rng.beta(2, 5)
+        present = rng.random(n_genes) > dropout
+        samples.append(_make_sample(present))
+
+    # Strategy 2: Subsystem-level dropout — remove entire metabolic subsystems
+    for _ in range(n_subsystem):
+        if not sub_names:
+            # Fallback to moderate if no subsystem info
+            dropout = rng.beta(2, 5)
+            present = rng.random(n_genes) > dropout
+        else:
+            present = np.ones(n_genes, dtype=bool)
+            # Remove 1 to 40% of subsystems
+            n_remove = max(1, rng.randint(1, max(2, len(sub_names) * 2 // 5)))
+            removed = rng.choice(len(sub_names), size=min(n_remove, len(sub_names)), replace=False)
+            for si in removed:
+                for gi in sub_gene_map[sub_names[si]]:
+                    present[gi] = False
+            # Light additional dropout on remaining genes
+            light_drop = rng.random(n_genes) < 0.05
+            present = present & ~light_drop
+        samples.append(_make_sample(present))
+
+    # Strategy 3: Block dropout — contiguous genomic segments
+    for _ in range(n_block):
+        present = np.ones(n_genes, dtype=bool)
+        # Remove 1-3 contiguous blocks
+        n_blocks = rng.randint(1, 4)
+        for _ in range(n_blocks):
+            block_len = rng.randint(n_genes // 20, n_genes // 4 + 1)
+            start = rng.randint(0, max(1, n_genes - block_len))
+            present[start:start + block_len] = False
+        samples.append(_make_sample(present))
+
+    # Strategy 4: Uniform dropout (original, for diversity at extremes)
+    for _ in range(n_uniform):
+        dropout = rng.random()
+        present = rng.random(n_genes) > dropout
+        samples.append(_make_sample(present))
+
+    # Shuffle to mix strategies within batches
+    rng.shuffle(samples)
     return samples
+
+
+# ---------------------------------------------------------------------------
+# Reaction feature builder (for A4: metadata-initialized queries)
+# ---------------------------------------------------------------------------
+
+
+def build_reaction_features(
+    organisms: list[dict],
+    universal_reactions: list[str],
+    feature_vocabs: dict[str, Any],
+) -> torch.Tensor:
+    """Build (n_reactions, n_rxn_features) metadata tensor for query init.
+
+    Per-reaction features:
+      - EC level-2 multi-hot (n_ec dims)
+      - Subsystem multi-hot (n_sub dims)
+      - log(1 + n_organisms_with_reaction) scalar
+      - mean_gene_count_per_organism scalar
+    """
+    ec_vocab = feature_vocabs["ec_vocab"]
+    sub_vocab = feature_vocabs["subsystem_vocab"]
+    n_ec = len(ec_vocab)
+    n_sub = len(sub_vocab)
+    n_feat = n_ec + n_sub + 2  # +2 scalars
+    n_rxns = len(universal_reactions)
+
+    features = torch.zeros(n_rxns, n_feat)
+    rxn_to_idx = {r: i for i, r in enumerate(universal_reactions)}
+
+    # Aggregate EC/subsystem info across all organisms
+    rxn_org_count = torch.zeros(n_rxns)
+    rxn_gene_count = torch.zeros(n_rxns)
+
+    for org in organisms:
+        org_rxns = set(org["reactions"])
+        gene_to_idx = {g: i for i, g in enumerate(org["genes"])}
+
+        for entry in org["gpr_rules"]:
+            rid = entry["id"]
+            if rid not in rxn_to_idx:
+                continue
+            ri = rxn_to_idx[rid]
+            rxn_org_count[ri] += 1
+            n_genes = len(_extract_genes_from_gpr(entry["gpr"]))
+            rxn_gene_count[ri] += n_genes
+
+        for rid, ec_list in org["reaction_ec"].items():
+            if rid not in rxn_to_idx:
+                continue
+            ri = rxn_to_idx[rid]
+            for ec in ec_list:
+                parts = ec.split(".")
+                if len(parts) >= 2:
+                    key = f"{parts[0]}.{parts[1]}"
+                    if key in ec_vocab:
+                        features[ri, ec_vocab[key]] = 1.0
+
+        for rid, sub in org["reaction_subsystem"].items():
+            if rid not in rxn_to_idx:
+                continue
+            ri = rxn_to_idx[rid]
+            if sub in sub_vocab:
+                features[ri, n_ec + sub_vocab[sub]] = 1.0
+
+    # Scalar features
+    features[:, n_ec + n_sub] = torch.log1p(rxn_org_count)
+    mean_genes = rxn_gene_count / rxn_org_count.clamp(min=1)
+    features[:, n_ec + n_sub + 1] = mean_genes
+
+    return features
+
+
+# ---------------------------------------------------------------------------
+# Stratified splitting by reaction-set dissimilarity
+# ---------------------------------------------------------------------------
+
+
+def _stratified_organism_split(
+    organisms: list[dict],
+    n_org: int,
+    test_frac: float,
+    val_frac: float,
+    seed: int,
+) -> tuple[set[int], set[int], set[int]]:
+    """Split organisms so that similar strains stay in the same split.
+
+    Greedy farthest-first traversal picks test/val organisms that are
+    maximally dissimilar to each other, reducing data leakage from
+    near-duplicate strains.
+    """
+    import numpy as np
+
+    # Build Jaccard distance matrix from reaction sets
+    rxn_sets = [set(o["reactions"]) for o in organisms]
+    dist = np.zeros((n_org, n_org), dtype=np.float32)
+    for i in range(n_org):
+        for j in range(i + 1, n_org):
+            inter = len(rxn_sets[i] & rxn_sets[j])
+            union = len(rxn_sets[i] | rxn_sets[j])
+            d = 1.0 - (inter / union) if union > 0 else 1.0
+            dist[i, j] = dist[j, i] = d
+
+    n_test = max(1, int(n_org * test_frac))
+    n_val = max(1, int(n_org * val_frac))
+    n_pick = n_test + n_val
+
+    rng = np.random.RandomState(seed)
+
+    # Farthest-first traversal to pick maximally diverse eval organisms
+    picked: list[int] = [rng.randint(0, n_org)]
+    remaining = set(range(n_org)) - {picked[0]}
+    for _ in range(n_pick - 1):
+        if not remaining:
+            break
+        # For each remaining, compute min distance to any picked organism
+        min_dists = {r: min(dist[r, p] for p in picked) for r in remaining}
+        farthest = max(min_dists, key=min_dists.get)
+        picked.append(farthest)
+        remaining.discard(farthest)
+
+    test_idx = set(picked[:n_test])
+    val_idx = set(picked[n_test:n_test + n_val])
+    train_idx = set(range(n_org)) - test_idx - val_idx
+    return train_idx, val_idx, test_idx
 
 
 # ---------------------------------------------------------------------------
@@ -428,19 +653,16 @@ def prepare_strain_dataset(
         organisms, min_organisms=min_rxn_organisms,
     )
     print(f"  EC level-2 classes: {feature_vocabs['n_ec']}")
+    print(f"  EC level-4 classes: {feature_vocabs['n_ec4']}")
     print(f"  Subsystems: {feature_vocabs['n_subsystem']}")
     print(f"  Features per gene: {feature_vocabs['n_features']}")
     print(f"  Universal reactions (>={min_rxn_organisms} orgs): {len(uni_rxns)}")
 
-    # Split organisms into train/val/test
-    rng = random.Random(seed)
-    indices = list(range(n_org))
-    rng.shuffle(indices)
-    n_test = max(1, int(n_org * test_frac))
-    n_val = max(1, int(n_org * val_frac))
-    test_idx = set(indices[:n_test])
-    val_idx = set(indices[n_test:n_test + n_val])
-    train_idx = set(indices[n_test + n_val:])
+    # Split organisms by reaction-set dissimilarity so train/val/test
+    # contain maximally diverse strains (no near-duplicates leaking).
+    train_idx, val_idx, test_idx = _stratified_organism_split(
+        organisms, n_org, test_frac, val_frac, seed,
+    )
 
     print(f"\nOrganism splits: {len(train_idx)} train, "
           f"{len(val_idx)} val, {len(test_idx)} test")
@@ -490,6 +712,11 @@ def prepare_strain_dataset(
         "n_genes": torch.tensor(org_n_genes, dtype=torch.int32),
     }, out_dir / "organism_features.pt")
 
+    # Build and save reaction metadata features (for A4: query initialization)
+    rxn_features = build_reaction_features(organisms, uni_rxns, feature_vocabs)
+    torch.save(rxn_features, out_dir / "reaction_features.pt")
+    print(f"  Reaction features: {rxn_features.shape}")
+
     # Save split data as padded tensors
     for split_name, data in split_data.items():
         n = len(data["org_idx"])
@@ -517,6 +744,7 @@ def prepare_strain_dataset(
     config = {
         "n_features": feature_vocabs["n_features"],
         "n_ec": feature_vocabs["n_ec"],
+        "n_ec4": feature_vocabs["n_ec4"],
         "n_subsystem": feature_vocabs["n_subsystem"],
         "n_universal_reactions": len(uni_rxns),
         "n_organisms": n_org,
@@ -527,6 +755,7 @@ def prepare_strain_dataset(
         "n_heads": 8,
         "n_encoder_layers": 2,
         "n_cross_layers": 2,
+        "n_self_layers": 1,
         "ff_dim": 512,
     }
     (out_dir / "config.json").write_text(json.dumps(config, indent=2))
@@ -535,6 +764,7 @@ def prepare_strain_dataset(
     )
     (out_dir / "feature_vocabs.json").write_text(json.dumps({
         "ec_vocab": feature_vocabs["ec_vocab"],
+        "ec4_vocab": feature_vocabs["ec4_vocab"],
         "subsystem_vocab": feature_vocabs["subsystem_vocab"],
     }, indent=2))
 
