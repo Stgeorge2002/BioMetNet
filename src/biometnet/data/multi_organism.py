@@ -446,7 +446,7 @@ def prepare_multi_organism_dataset(
         "test": {"org_idx": [], "presence": [], "labels": []},
     }
 
-    from concurrent.futures import ProcessPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     import os
 
     n_workers = min(os.cpu_count() or 1, 8)
@@ -458,7 +458,7 @@ def prepare_multi_organism_dataset(
         )
         return idx, split, n_samp, samples
 
-    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+    with ThreadPoolExecutor(max_workers=n_workers) as pool:
         futures = {pool.submit(_gen_task, t): t for t in tasks}
         for future in as_completed(futures):
             idx, split, n_samp, samples = future.result()
