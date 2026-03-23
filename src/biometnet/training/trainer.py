@@ -122,6 +122,7 @@ class Trainer:
                 "epoch": epoch,
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
+                "scheduler_state_dict": self.scheduler.state_dict(),
                 "val_loss": val_loss,
                 "global_step": self.global_step,
             },
@@ -134,6 +135,7 @@ class Trainer:
         print(f"Train batches: {len(self.train_loader)}, "
               f"Val batches: {len(self.val_loader) if self.val_loader else 0}")
 
+        epochs_without_improvement = 0
         for epoch in range(1, self.config.epochs + 1):
             train_loss = self._train_epoch()
             print(f"Epoch {epoch:3d} | train_loss {train_loss:.4f}", end="")
@@ -144,13 +146,20 @@ class Trainer:
 
                 if val_loss < self.best_val_loss:
                     self.best_val_loss = val_loss
+                    epochs_without_improvement = 0
                     self._save_checkpoint(ckpt_dir / "best.pt", epoch, val_loss)
                     print(" *", end="")
+                else:
+                    epochs_without_improvement += self.config.val_every
 
             print()
 
+            if self.config.patience > 0 and epochs_without_improvement >= self.config.patience:
+                print(f"Early stopping: no improvement for {epochs_without_improvement} epochs")
+                break
+
         # Save final checkpoint
-        self._save_checkpoint(ckpt_dir / "last.pt", self.config.epochs, self.best_val_loss)
+        self._save_checkpoint(ckpt_dir / "last.pt", epoch, self.best_val_loss)
         print(f"Done. Best val_loss: {self.best_val_loss:.4f}")
 
 
@@ -174,14 +183,19 @@ class FocalBCELoss(nn.Module):
         self.register_buffer("pos_weight", pos_weight)
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        if self.label_smoothing > 0:
-            targets = targets * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
-        bce = nn.functional.binary_cross_entropy_with_logits(
-            logits, targets, reduction="none", pos_weight=self.pos_weight,
-        )
+        # Compute focal weight from ORIGINAL hard targets so easy examples
+        # are properly down-weighted (smoothing would inflate focal weights)
         probs = torch.sigmoid(logits)
         pt = probs * targets + (1 - probs) * (1 - targets)
         focal_weight = (1 - pt) ** self.gamma
+
+        # Apply label smoothing only to the BCE targets
+        smooth_targets = targets
+        if self.label_smoothing > 0:
+            smooth_targets = targets * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
+        bce = nn.functional.binary_cross_entropy_with_logits(
+            logits, smooth_targets, reduction="none", pos_weight=self.pos_weight,
+        )
         return (focal_weight * bce).mean()
 
 
@@ -220,7 +234,7 @@ class ClassifierTrainer:
 
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
 
-        total_steps = (len(train_loader) // self.grad_accum_steps) * config.epochs
+        total_steps = math.ceil(len(train_loader) / self.grad_accum_steps) * config.epochs
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
             self.optimizer,
             lr_lambda=Trainer._warmup_cosine(config.warmup_steps, total_steps),
@@ -237,6 +251,8 @@ class ClassifierTrainer:
             else:
                 for _ in range(resume_checkpoint.get("global_step", 0)):
                     self.scheduler.step()
+            if "scaler_state_dict" in resume_checkpoint:
+                self.scaler.load_state_dict(resume_checkpoint["scaler_state_dict"])
             self.global_step = resume_checkpoint.get("global_step", 0)
             self.best_val_loss = resume_checkpoint.get("val_loss", float("inf"))
             self.start_epoch = resume_checkpoint["epoch"] + 1
@@ -317,6 +333,7 @@ class ClassifierTrainer:
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.scheduler.state_dict(),
+                "scaler_state_dict": self.scaler.state_dict(),
                 "val_loss": val_loss,
                 "global_step": self.global_step,
             },
@@ -330,6 +347,7 @@ class ClassifierTrainer:
         print(f"Train batches: {len(self.train_loader)}, "
               f"Val batches: {len(self.val_loader) if self.val_loader else 0}", flush=True)
 
+        epochs_without_improvement = 0
         for epoch in range(self.start_epoch, self.config.epochs + 1):
             train_loss = self._train_epoch()
             msg = f"Epoch {epoch:3d} | train_loss {train_loss:.4f}"
@@ -340,10 +358,18 @@ class ClassifierTrainer:
 
                 if val_loss < self.best_val_loss:
                     self.best_val_loss = val_loss
+                    epochs_without_improvement = 0
                     self._save_checkpoint(ckpt_dir / "best.pt", epoch, val_loss)
                     msg += " *"
+                else:
+                    epochs_without_improvement += self.config.val_every
 
             print(msg, flush=True)
 
-        self._save_checkpoint(ckpt_dir / "last.pt", self.config.epochs, self.best_val_loss)
+            if self.config.patience > 0 and epochs_without_improvement >= self.config.patience:
+                print(f"Early stopping: no improvement for {epochs_without_improvement} epochs",
+                      flush=True)
+                break
+
+        self._save_checkpoint(ckpt_dir / "last.pt", epoch, self.best_val_loss)
         print(f"Done. Best val_loss: {self.best_val_loss:.4f}", flush=True)

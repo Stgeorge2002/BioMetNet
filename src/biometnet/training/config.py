@@ -40,6 +40,7 @@ class TrainingConfig:
     checkpoint_dir: str = "checkpoints"
     log_every: int = 10
     val_every: int = 1  # validate every N epochs
+    patience: int = 7  # early stopping: stop after N epochs without improvement
 
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)
