@@ -242,6 +242,12 @@ def _pathway_dropout_sample(
     are removed, creating biologically coherent pathway absence patterns.
     """
     pathway_names = list(pathway_gene_sets.keys())
+    if len(pathway_names) <= 1:
+        # Can't drop pathways if there are 0 or 1 — return full genome
+        present = set(genes)
+        genome = [1] * len(genes)
+        _apply_noise(genome, genes, present, rng, noise_rate)
+        return {"genome": genome, "reaction_ids": _evaluate_active_reactions(gpr_rules, present)}
     n_drop = rng.randint(1, len(pathway_names) - 1)
     to_drop = set(rng.sample(pathway_names, n_drop))
 

@@ -105,6 +105,8 @@ def per_pathway_breakdown(
     """
     n = len(predictions)
     pw_stats: dict[str, dict[str, float]] = {}
+    if n == 0:
+        return []
 
     for pw in pathway_defs:
         name = pw["name"]

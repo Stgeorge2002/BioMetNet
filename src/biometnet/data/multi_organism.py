@@ -341,17 +341,6 @@ def _compile_gpr(rule: str, gene_to_idx: dict[str, int]):
 
     tree = parse_or()
 
-    def evaluate(present: np.ndarray) -> bool:
-        stack = [tree]
-        while stack:
-            node = stack[-1]
-            if node[0] == "gene":
-                stack[-1] = node[1] >= 0 and present[node[1]]
-                break
-            # Need to reduce tree — use recursive eval for correctness
-            break
-        return _eval_tree(tree, present)
-
     def _eval_tree(node, present: np.ndarray) -> bool:
         if isinstance(node, bool):
             return node
