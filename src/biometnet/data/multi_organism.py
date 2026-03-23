@@ -297,6 +297,77 @@ def extract_gene_features(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Fast compiled GPR evaluation
+# ---------------------------------------------------------------------------
+
+
+def _compile_gpr(rule: str, gene_to_idx: dict[str, int]):
+    """Compile a GPR rule string into a fast evaluator operating on a bool array.
+
+    Returns a callable: (present: np.ndarray[bool]) -> bool
+    Parses once, evaluates in O(n_genes_in_rule) with no string ops.
+    """
+    import numpy as np
+
+    tokens = rule.replace("(", " ( ").replace(")", " ) ").split()
+    pos = [0]
+
+    def parse_or():
+        left = parse_and()
+        while pos[0] < len(tokens) and tokens[pos[0]] == "or":
+            pos[0] += 1
+            right = parse_and()
+            left = ("or", left, right)
+        return left
+
+    def parse_and():
+        left = parse_atom()
+        while pos[0] < len(tokens) and tokens[pos[0]] == "and":
+            pos[0] += 1
+            right = parse_atom()
+            left = ("and", left, right)
+        return left
+
+    def parse_atom():
+        if tokens[pos[0]] == "(":
+            pos[0] += 1
+            result = parse_or()
+            pos[0] += 1  # skip ")"
+            return result
+        gene = tokens[pos[0]]
+        pos[0] += 1
+        return ("gene", gene_to_idx.get(gene, -1))
+
+    tree = parse_or()
+
+    def evaluate(present: np.ndarray) -> bool:
+        stack = [tree]
+        while stack:
+            node = stack[-1]
+            if node[0] == "gene":
+                stack[-1] = node[1] >= 0 and present[node[1]]
+                break
+            # Need to reduce tree — use recursive eval for correctness
+            break
+        return _eval_tree(tree, present)
+
+    def _eval_tree(node, present: np.ndarray) -> bool:
+        if isinstance(node, bool):
+            return node
+        op = node[0]
+        if op == "gene":
+            idx = node[1]
+            return idx >= 0 and bool(present[idx])
+        elif op == "and":
+            return _eval_tree(node[1], present) and _eval_tree(node[2], present)
+        elif op == "or":
+            return _eval_tree(node[1], present) or _eval_tree(node[2], present)
+        return False
+
+    return _eval_tree, tree
+
+
 def generate_organism_samples(
     organism: dict,
     universal_reactions: list[str],
@@ -307,42 +378,46 @@ def generate_organism_samples(
     """Generate dropout-augmented samples for one organism.
 
     Returns list of {presence: ByteTensor, labels: ByteTensor}.
-    Gene features are gated by presence at DataLoader time, not here.
+    Uses numpy for fast vectorized operations and pre-compiled GPR trees.
     """
+    import numpy as np
+
     genes = organism["genes"]
     gpr_rules = organism["gpr_rules"]
-    rng = random.Random(seed)
+    n_genes = len(genes)
     uni_idx = {r: i for i, r in enumerate(universal_reactions)}
     n_uni = len(universal_reactions)
+    gene_to_idx = {g: i for i, g in enumerate(genes)}
+
+    # Pre-compile GPR rules: parse strings once
+    compiled_rules: list[tuple[int, Any, Any]] = []  # (uni_rxn_idx, eval_fn, tree)
+    for entry in gpr_rules:
+        if entry["id"] in uni_idx:
+            eval_fn, tree = _compile_gpr(entry["gpr"], gene_to_idx)
+            compiled_rules.append((uni_idx[entry["id"]], eval_fn, tree))
+
+    rng = np.random.RandomState(seed)
 
     samples = []
     for _ in range(n_samples):
         dropout = rng.random()
-
-        presence = torch.zeros(len(genes), dtype=torch.uint8)
-        present: set[str] = set()
-        for i, g in enumerate(genes):
-            if rng.random() > dropout:
-                presence[i] = 1
-                present.add(g)
+        present = rng.random(n_genes) > dropout  # bool array
 
         # Noise flips
-        for i in range(len(genes)):
-            if rng.random() < noise_rate:
-                if presence[i]:
-                    presence[i] = 0
-                    present.discard(genes[i])
-                else:
-                    presence[i] = 1
-                    present.add(genes[i])
+        if noise_rate > 0:
+            flip = rng.random(n_genes) < noise_rate
+            present = present ^ flip  # XOR flips
 
-        # Evaluate active reactions in universal space
-        labels = torch.zeros(n_uni, dtype=torch.uint8)
-        for entry in gpr_rules:
-            if entry["id"] in uni_idx and evaluate_gpr(entry["gpr"], present):
-                labels[uni_idx[entry["id"]]] = 1
+        # Evaluate pre-compiled rules
+        labels = np.zeros(n_uni, dtype=np.uint8)
+        for rxn_idx, eval_fn, tree in compiled_rules:
+            if eval_fn(tree, present):
+                labels[rxn_idx] = 1
 
-        samples.append({"presence": presence, "labels": labels})
+        samples.append({
+            "presence": torch.from_numpy(present.astype(np.uint8)),
+            "labels": torch.from_numpy(labels),
+        })
 
     return samples
 
@@ -446,29 +521,17 @@ def prepare_multi_organism_dataset(
         "test": {"org_idx": [], "presence": [], "labels": []},
     }
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import os
-
-    n_workers = min(os.cpu_count() or 1, 8)
-
-    def _gen_task(args):
-        idx, split, n_samp, s_seed = args
+    for idx, split, n_samp, s_seed in tasks:
         samples = generate_organism_samples(
             organisms[idx], uni_rxns, n_samples=n_samp, seed=s_seed,
         )
-        return idx, split, n_samp, samples
-
-    with ThreadPoolExecutor(max_workers=n_workers) as pool:
-        futures = {pool.submit(_gen_task, t): t for t in tasks}
-        for future in as_completed(futures):
-            idx, split, n_samp, samples = future.result()
-            for s in samples:
-                split_data[split]["org_idx"].append(idx)
-                split_data[split]["presence"].append(s["presence"])
-                split_data[split]["labels"].append(s["labels"])
-            print(f"  {model_ids[idx]}: {n_samp} {split} samples "
-                  f"({len(organisms[idx]['genes'])} genes, "
-                  f"{len(organisms[idx]['reactions'])} rxns)")
+        for s in samples:
+            split_data[split]["org_idx"].append(idx)
+            split_data[split]["presence"].append(s["presence"])
+            split_data[split]["labels"].append(s["labels"])
+        print(f"  {model_ids[idx]}: {n_samp} {split} samples "
+              f"({len(organisms[idx]['genes'])} genes, "
+              f"{len(organisms[idx]['reactions'])} rxns)")
 
     # Save organism features (use weights_only=False compatible format)
     torch.save({
