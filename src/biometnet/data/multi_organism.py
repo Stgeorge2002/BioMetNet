@@ -23,7 +23,7 @@ import torch
 from biometnet.data.ecoli_data import evaluate_gpr
 
 BIGG_API = "https://bigg.ucsd.edu/api/v2"
-BIGG_STATIC = "https://bigg.ucsd.edu/static/models"
+BIGG_STATIC = "http://bigg.ucsd.edu/static/models"
 
 # Hardcoded fallback: all known BiGG model IDs as of 2024.
 # Used when the API is unreachable (e.g. network restrictions on cloud pods).
