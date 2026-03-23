@@ -197,6 +197,7 @@ class ClassifierTrainer:
         pos_weight: torch.Tensor | None = None,
         resume_checkpoint: dict | None = None,
         use_amp: bool = False,
+        grad_accum_steps: int = 1,
     ) -> None:
         self.device = config.resolve_device()
         self.model = model.to(self.device)
@@ -204,6 +205,7 @@ class ClassifierTrainer:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.use_amp = use_amp and self.device == "cuda"
+        self.grad_accum_steps = grad_accum_steps
 
         pw = pos_weight.to(self.device) if pos_weight is not None else None
         self.criterion = FocalBCELoss(
@@ -215,7 +217,7 @@ class ClassifierTrainer:
 
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
 
-        total_steps = len(train_loader) * config.epochs
+        total_steps = (len(train_loader) // self.grad_accum_steps) * config.epochs
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
             self.optimizer,
             lr_lambda=Trainer._warmup_cosine(config.warmup_steps, total_steps),
@@ -241,7 +243,7 @@ class ClassifierTrainer:
         total_loss = 0.0
         n_batches = 0
 
-        for batch in self.train_loader:
+        for batch_idx, batch in enumerate(self.train_loader):
             labels = batch["labels"].to(self.device)
 
             with torch.amp.autocast("cuda", enabled=self.use_amp):
@@ -253,24 +255,27 @@ class ClassifierTrainer:
                 else:
                     logits = self.model(batch["genome"].to(self.device))
                 loss = self.criterion(logits, labels)
+                loss = loss / self.grad_accum_steps
 
-            self.optimizer.zero_grad()
             self.scaler.scale(loss).backward()
-            self.scaler.unscale_(self.optimizer)
-            nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.scheduler.step()
 
-            total_loss += loss.item()
+            if (batch_idx + 1) % self.grad_accum_steps == 0 or (batch_idx + 1) == len(self.train_loader):
+                self.scaler.unscale_(self.optimizer)
+                nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                self.optimizer.zero_grad()
+                self.scheduler.step()
+                self.global_step += 1
+
+            total_loss += loss.item() * self.grad_accum_steps
             n_batches += 1
-            self.global_step += 1
 
-            if self.global_step % self.config.log_every == 0:
+            if self.global_step % self.config.log_every == 0 and ((batch_idx + 1) % self.grad_accum_steps == 0):
                 lr = self.scheduler.get_last_lr()[0]
                 print(
                     f"  step {self.global_step:5d} | "
-                    f"loss {loss.item():.4f} | lr {lr:.2e}",
+                    f"loss {loss.item() * self.grad_accum_steps:.4f} | lr {lr:.2e}",
                     flush=True,
                 )
 

@@ -41,12 +41,13 @@ def main() -> None:
         mo_config = json.loads((data_dir / "config.json").read_text())
 
         config = TrainingConfig(
-            batch_size=32,
+            batch_size=8,
             lr=1e-4,
             epochs=60,
             warmup_steps=500,
             log_every=50,
         )
+        grad_accum_steps = 4  # effective batch = 8 * 4 = 32
 
         print("Loading multi-organism dataset...")
         org_feat_path = data_dir / "organism_features.pt"
@@ -95,6 +96,7 @@ def main() -> None:
             model, train_loader, val_loader, config,
             pos_weight=None, resume_checkpoint=resume_ckpt,
             use_amp=True,
+            grad_accum_steps=grad_accum_steps,
         )
         trainer.train()
         return
