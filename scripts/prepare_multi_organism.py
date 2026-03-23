@@ -17,8 +17,8 @@ def main() -> None:
         help="Limit number of BiGG models to download (default: all)",
     )
     parser.add_argument(
-        "--samples-per-org", type=int, default=200,
-        help="Training samples per organism (default: 200)",
+        "--samples-per-org", type=int, default=500,
+        help="Training samples per organism (default: 500)",
     )
     parser.add_argument(
         "--eval-samples-per-org", type=int, default=50,
