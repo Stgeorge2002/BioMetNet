@@ -23,7 +23,28 @@ import torch
 from biometnet.data.ecoli_data import evaluate_gpr
 
 BIGG_API = "https://bigg.ucsd.edu/api/v2"
-BIGG_STATIC = "http://bigg.ucsd.edu/static/models"
+BIGG_STATIC = "https://bigg.ucsd.edu/static/models"
+
+# Hardcoded fallback: all known BiGG model IDs as of 2024.
+# Used when the API is unreachable (e.g. network restrictions on cloud pods).
+_KNOWN_BIGG_MODELS = [
+    "e_coli_core", "iAF1260", "iAF1260b", "iAF692", "iAM_Pb448", "iAM_Pk459",
+    "iAM_Pf480", "iAM_Pv461", "iAM_Pf480", "iAPECO1_1312", "iB21_1397",
+    "iBsu1103", "iCN718", "iCN900", "iEC1344_C", "iEC1349_Crooks",
+    "iEC1356_Bl21DE3", "iEC1364_W", "iEC55989", "iECABU_c1320", "iECB_3114",
+    "iECBD_1354", "iECED1_1282", "iECH74115_1262", "iECIAI1_1343",
+    "iECIAI39_1322", "iECNA114_1301", "iECO103_1326", "iECO111_1330",
+    "iECO26_1355", "iECO55EA1_1288", "iECOK1_1307", "iECsc47_1070",
+    "iECUMN_1333", "iECW_1372", "iECW3110_1372", "iEKO11_1354", "iEcDH1_1363",
+    "iEcDH1ME8569_1439", "iEcE24377_1341", "iEcHS_1320", "iEcSMS35_1347",
+    "iHN637", "iIT341", "iJN678", "iJN746", "iJO1366", "iJR904",
+    "iLB1027_lipid", "iLJ478", "iML1515", "iMM1415", "iMM904", "iND750",
+    "iNF517", "iNJ661", "iNJ661m", "iNJ661v", "iPC815", "iPP668",
+    "iPS189_WT", "iRC1080", "iRsp1095", "iS_1188", "iSB619", "iSF1195",
+    "iSbBS512_1146", "iSynCJ816", "iUMN146_1321", "iUMNK88_1353", "iUTI89_1310",
+    "iVS941_malaria", "iYL1228", "iYO844", "iYS1720", "iZ_1308",
+    "STM_v1_0", "Recon1", "Recon3D", "AGORA_Lactobacillus_reuteri_JCM_1112",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -32,10 +53,17 @@ BIGG_STATIC = "http://bigg.ucsd.edu/static/models"
 
 
 def fetch_bigg_model_list() -> list[dict]:
-    """Fetch list of all available BiGG model IDs."""
-    resp = requests.get(f"{BIGG_API}/models", timeout=30)
-    resp.raise_for_status()
-    return resp.json()["results"]
+    """Fetch list of all available BiGG model IDs.
+
+    Falls back to a hardcoded list if the API is unreachable.
+    """
+    try:
+        resp = requests.get(f"{BIGG_API}/models", timeout=15)
+        resp.raise_for_status()
+        return resp.json()["results"]
+    except Exception as e:
+        print(f"  Warning: BiGG API unreachable ({e}), using built-in model list.")
+        return [{"bigg_id": mid} for mid in _KNOWN_BIGG_MODELS]
 
 
 def download_bigg_model_json(
