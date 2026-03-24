@@ -288,7 +288,7 @@ def _detect_solver() -> str | None:
 def run_carveme_single(
     fasta_path: Path,
     output_path: Path,
-    universe: str = "gram_negative",
+    universe: str = "gramneg",
     solver: str | None = None,
     timeout_seconds: int = 1200,
 ) -> tuple[bool, str]:
@@ -297,7 +297,7 @@ def run_carveme_single(
     Args:
         fasta_path: Path to input .faa file
         output_path: Path for output .xml SBML model
-        universe: CarveMe universe template (gram_negative for E. coli)
+        universe: CarveMe universe template (gramneg for E. coli)
         solver: LP solver (None = let CarveMe decide)
         timeout_seconds: Max time per model (default 20 min)
 
@@ -344,7 +344,7 @@ def run_carveme_single(
 def run_carveme_batch(
     fasta_paths: list[Path],
     out_dir: str | Path = "data/raw/carveme_models",
-    universe: str = "gram_negative",
+    universe: str = "gramneg",
     timeout_per_model: int = 1200,
 ) -> list[Path]:
     """Run CarveMe on a batch of protein FASTA files.
