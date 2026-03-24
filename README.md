@@ -119,7 +119,7 @@ tests/                 # Unit tests (pytest)
 
 **E. coli (single strain):** Downloads iML1515 from BiGG → extracts genes, reactions, GPR rules, pathway definitions → generates 30K samples via gene dropout strategies (block, independent, pathway-level) → resamples to 12K balanced samples → 80/10/10 split.
 
-**E. coli (cross-strain):** Downloads ~34 E. coli strain models from BiGG → builds universal reaction set (reactions appearing in ≥2 strains) → extracts strain-agnostic gene features (EC, subsystem) → generates 1000 dropout-augmented samples per strain → saves as padded tensors for fast loading.
+**E. coli (cross-strain):** Downloads ~34 E. coli strain models from BiGG → builds universal reaction set (reactions appearing in ≥2 strains) → extracts strain-agnostic gene features (EC level-2, EC level-4, metabolic subsystem, scalar features) → generates 1000 dropout-augmented samples per training strain using a 4-strategy mixture (moderate Beta-distributed dropout, subsystem-level dropout, block dropout, uniform dropout) → splits strains by Jaccard dissimilarity to minimise data leakage → saves padded tensors and pre-computed reaction metadata features for fast loading.
 
 **Toy:** 40 genes, 10 synthetic pathways, 1000 samples. Useful for quick iteration and testing.
 
@@ -131,6 +131,7 @@ tests/                 # Unit tests (pytest)
 | d_model | 128 | 256 | 256 |
 | Encoder layers | 2 | 4 | 2 |
 | Cross-attn layers | 1 | 1 | 2 |
+| Self-attn layers | — | — | 1 |
 | ff_dim | 256 | 512 | 512 |
 | Batch size | 32 | 8 | 16 (×2 accum = 32) |
 | Learning rate | 3e-4 | 3e-4 | 1e-4 |
@@ -146,14 +147,61 @@ uv run python scripts/train.py --dataset ecoli --resume
 
 ## Cloud Deployment (RunPod)
 
+Recommended GPU: **A40** ($0.40/hr, 48GB VRAM, 9 vCPU, Medium availability).
+The pipeline auto-stops the pod when complete so it doesn't idle and cost money.
+
+### Fresh pod setup
+
+Run once after creating a new pod:
+
 ```bash
-# Deploy code to pod
-bash cloud/deploy.sh
+rm -rf /workspace/*
+curl -LsSf https://astral.sh/uv/install.sh | sh && source $HOME/.local/bin/env
+git clone https://YOUR_TOKEN@github.com/Stgeorge2002/BioMetNet.git /workspace/BioMetNet
+cd /workspace/BioMetNet
+export UV_PROJECT_ENVIRONMENT=/root/.venv
+export UV_LINK_MODE=copy
+uv sync
+```
 
-# SSH into pod and run full pipeline
-bash cloud/run_pipeline.sh
+### Full pipeline (recommended)
 
-# Sync results back
+Runs prepare → train → evaluate, then auto-stops the pod. Safe to disconnect SSH while running.
+
+```bash
+nohup bash cloud/run_pipeline.sh > /workspace/pipeline.log 2>&1 &
+tail -f /workspace/pipeline.log
+```
+
+### Step-by-step
+
+```bash
+# 1. Prepare data (downloads ~34 BiGG strain models, builds features and samples)
+cd /workspace/BioMetNet && export UV_PROJECT_ENVIRONMENT=/root/.venv && export UV_LINK_MODE=copy \
+  && rm -rf data/processed/ecoli_strains && uv run python scripts/prepare_data.py
+
+# 2. Train (clears old checkpoints for a clean run)
+cd /workspace/BioMetNet && export UV_PROJECT_ENVIRONMENT=/root/.venv && export UV_LINK_MODE=copy \
+  && export PYTORCH_ALLOC_CONF=expandable_segments:True \
+  && rm -rf checkpoints \
+  && nohup uv run python scripts/train.py --dataset ecoli_strains > /workspace/train.log 2>&1 &
+
+# 3. Watch training
+tail -f /workspace/train.log
+
+# 4. Evaluate
+cd /workspace/BioMetNet && export UV_PROJECT_ENVIRONMENT=/root/.venv && export UV_LINK_MODE=copy \
+  && uv run python scripts/evaluate.py --dataset ecoli_strains --sweep
+```
+
+### Utilities
+
+```bash
+git -C /workspace/BioMetNet pull   # pull latest code
+jobs -l                            # check background jobs
+kill $(jobs -p)                    # stop all background jobs
+
+# Sync results back to local machine (run from WSL, not the pod)
 bash cloud/sync_results.sh
 ```
 
