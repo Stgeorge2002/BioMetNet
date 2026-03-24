@@ -50,6 +50,14 @@ if [ "${INSTALL_CARVEME:-0}" = "1" ]; then
     else
         echo "WARNING: diamond not installed — CarveMe will fail"
     fi
+
+    # Download CarveMe universe database (required before first run)
+    echo "Initialising CarveMe universe database..."
+    if uv run carve --init 2>&1 | tail -3; then
+        echo "CarveMe universe database ready"
+    else
+        echo "WARNING: CarveMe init may have failed — check above output"
+    fi
 fi
 
 # 4. Verify GPU is available
