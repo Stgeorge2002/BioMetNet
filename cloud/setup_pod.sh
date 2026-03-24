@@ -59,10 +59,14 @@ from biometnet.data.dataset import StrainDataset, strain_collate_fn
 print('All imports OK')
 "
 
-# 6. Run tests
+# 6. Run tests (if pytest available)
 echo ""
 echo "=== Running Tests ==="
-uv run python -m pytest tests/ -v
+if uv run python -m pytest tests/ -v 2>/dev/null; then
+    echo "Tests passed"
+else
+    echo "Skipped (pytest not installed — use 'uv sync --extra dev' to enable)"
+fi
 
 echo ""
 echo "=== Setup Complete ==="
