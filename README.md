@@ -24,6 +24,13 @@ uv run python scripts/evaluate.py --dataset ecoli --sweep --pathway-breakdown
 uv run python scripts/prepare_data.py
 uv run python scripts/train.py --dataset ecoli_strains
 uv run python scripts/evaluate.py --dataset ecoli_strains --sweep
+
+# Option 4: E. coli cross-strain + CarveMe (BiGG + NCBI-derived models)
+uv sync --extra carveme
+uv run python scripts/build_carveme_models.py --max-genomes 200
+uv run python scripts/prepare_data.py --carveme-dir data/raw/carveme_models
+uv run python scripts/train.py --dataset ecoli_strains
+uv run python scripts/evaluate.py --dataset ecoli_strains --sweep
 ```
 
 ## Models
@@ -81,6 +88,7 @@ src/biometnet/
 ├── data/              # Datasets, vocab, data generation pipelines
 │   ├── ecoli_data.py      # E. coli iML1515 pipeline with GPR evaluation
 │   ├── strain_data.py     # Cross-strain BiGG pipeline
+│   ├── ncbi_carveme.py    # NCBI genome download + CarveMe reconstruction
 │   ├── dataset.py         # PyTorch Dataset/collate implementations
 │   ├── metabolic_vocab.py # Reaction token vocabulary
 │   └── toy_data.py        # Synthetic 40-gene, 10-pathway data
@@ -103,6 +111,7 @@ scripts/               # CLI entry points
 ├── predict.py             # GFF → reaction predictions
 ├── prepare_ecoli_data.py  # Download iML1515 + generate training data
 ├── prepare_data.py        # Download E. coli strain models + build dataset
+├── build_carveme_models.py # Download NCBI genomes + CarveMe reconstruction
 ├── generate_toy_data.py   # Synthetic data for testing
 └── download_bigg.py       # Standalone BiGG model downloader
 
@@ -119,7 +128,9 @@ tests/                 # Unit tests (pytest)
 
 **E. coli (single strain):** Downloads iML1515 from BiGG → extracts genes, reactions, GPR rules, pathway definitions → generates 30K samples via gene dropout strategies (block, independent, pathway-level) → resamples to 12K balanced samples → 80/10/10 split.
 
-**E. coli (cross-strain):** Downloads ~34 E. coli strain models from BiGG → builds universal reaction set (reactions appearing in ≥2 strains) → extracts strain-agnostic gene features (EC level-2, EC level-4, metabolic subsystem, scalar features) → generates 1000 dropout-augmented samples per training strain using a 4-strategy mixture (moderate Beta-distributed dropout, subsystem-level dropout, block dropout, uniform dropout) → splits strains by Jaccard dissimilarity to minimise data leakage → saves padded tensors and pre-computed reaction metadata features for fast loading.
+**E. coli (cross-strain):** Downloads ~34 E. coli strain models from BiGG → builds universal reaction set (reactions appearing in ≥2 strains) → extracts strain-agnostic gene features (EC level-2, metabolic subsystem, scalar features) → generates 1000 dropout-augmented samples per training strain using a 4-strategy mixture (moderate Beta-distributed dropout, subsystem-level dropout, block dropout, uniform dropout) → splits strains by Jaccard dissimilarity to minimise data leakage → saves padded tensors and pre-computed reaction metadata features for fast loading.
+
+**E. coli (cross-strain + CarveMe):** Extends the above with NCBI-sourced genomes. Downloads E. coli protein FASTAs from NCBI Datasets API → deduplicates by strain name → reconstructs genome-scale metabolic models using CarveMe (gram-negative universe, GLPK solver) → merges CarveMe SBML models with BiGG JSON models → trains on the combined set. Scales from ~34 to hundreds or thousands of distinct strain models.
 
 **Toy:** 40 genes, 10 synthetic pathways, 1000 samples. Useful for quick iteration and testing.
 
@@ -164,13 +175,33 @@ export UV_LINK_MODE=copy
 uv sync
 ```
 
-### Full pipeline (recommended)
+### Full pipeline — BiGG only (recommended first run)
 
-Runs prepare → train → evaluate, then auto-stops the pod. Safe to disconnect SSH while running.
+Runs prepare → train → evaluate on the 34 BiGG strain models, then auto-stops the pod.
 
 ```bash
 nohup bash cloud/run_pipeline.sh > /workspace/pipeline.log 2>&1 &
 tail -f /workspace/pipeline.log
+```
+
+### Full pipeline — BiGG + CarveMe
+
+Downloads N genomes from NCBI, builds CarveMe models, then trains on BiGG + CarveMe combined.
+CarveMe reconstruction is CPU-bound (~5-15 min per model), so plan accordingly.
+
+```bash
+# Install CarveMe + LP solver (one-time)
+INSTALL_CARVEME=1 bash cloud/setup_pod.sh
+
+# Run full pipeline with 200 NCBI-derived models
+nohup bash cloud/run_pipeline.sh --carveme 200 > /workspace/pipeline.log 2>&1 &
+tail -f /workspace/pipeline.log
+```
+
+To build CarveMe models without training (e.g. overnight on a cheap CPU pod):
+
+```bash
+nohup bash cloud/run_pipeline.sh --carveme-only 500 > /workspace/carveme.log 2>&1 &
 ```
 
 ### Step-by-step
@@ -179,6 +210,11 @@ tail -f /workspace/pipeline.log
 # 1. Prepare data (downloads ~34 BiGG strain models, builds features and samples)
 cd /workspace/BioMetNet && export UV_PROJECT_ENVIRONMENT=/root/.venv && export UV_LINK_MODE=copy \
   && rm -rf data/processed/ecoli_strains && uv run python scripts/prepare_data.py
+
+# 1b. (Optional) Build CarveMe models and include them
+uv sync --extra carveme
+uv run python scripts/build_carveme_models.py --max-genomes 200
+uv run python scripts/prepare_data.py --carveme-dir data/raw/carveme_models
 
 # 2. Train (clears old checkpoints for a clean run)
 cd /workspace/BioMetNet && export UV_PROJECT_ENVIRONMENT=/root/.venv && export UV_LINK_MODE=copy \
