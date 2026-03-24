@@ -266,13 +266,19 @@ def _check_carveme_available() -> bool:
 
 def _detect_solver() -> str | None:
     """Auto-detect the best available LP solver for CarveMe."""
-    for solver in ("scip", "glpk", "cplex", "gurobi"):
+    for solver in ("cplex", "gurobi", "scip", "glpk"):
         try:
             if solver == "scip":
                 import pyscipopt  # noqa: F401
                 return solver
             elif solver == "glpk":
                 import swiglpk  # noqa: F401
+                return solver
+            elif solver == "cplex":
+                import cplex  # noqa: F401
+                return solver
+            elif solver == "gurobi":
+                import gurobipy  # noqa: F401
                 return solver
         except ImportError:
             continue
@@ -292,16 +298,13 @@ def run_carveme_single(
         fasta_path: Path to input .faa file
         output_path: Path for output .xml SBML model
         universe: CarveMe universe template (gram_negative for E. coli)
-        solver: LP solver (auto-detected if None)
+        solver: LP solver (None = let CarveMe decide)
         timeout_seconds: Max time per model (default 20 min)
 
     Returns (success, error_message) tuple.
     """
     if output_path.exists() and output_path.stat().st_size > 1000:
         return True, ""  # already built
-
-    if solver is None:
-        solver = _detect_solver()
 
     cmd = [
         "carve",
@@ -319,14 +322,16 @@ def run_carveme_single(
             text=True,
             timeout=timeout_seconds,
         )
+        combined = (
+            (result.stderr or "") + "\n" + (result.stdout or "")
+        ).strip()
         if result.returncode != 0:
             output_path.unlink(missing_ok=True)
-            err = (result.stderr or result.stdout or "").strip()
-            return False, err
+            return False, combined or f"exit code {result.returncode}"
         if output_path.exists() and output_path.stat().st_size > 1000:
             return True, ""
         output_path.unlink(missing_ok=True)
-        return False, "Output file missing or too small"
+        return False, combined or "Output file missing or too small"
     except subprocess.TimeoutExpired:
         output_path.unlink(missing_ok=True)
         return False, f"Timed out after {timeout_seconds}s"
@@ -358,7 +363,7 @@ def run_carveme_batch(
         )
 
     solver = _detect_solver()
-    print(f"  Using solver: {solver or 'auto'}")
+    print(f"  Available solver: {solver or 'none detected — using CarveMe default'}")
 
     model_paths: list[Path] = []
     failed = 0
@@ -379,9 +384,10 @@ def run_carveme_batch(
         print(f"  [{i+1}/{len(fasta_paths)}] {model_name}... ",
               end="", flush=True)
 
+        # Don't pass explicit solver — let CarveMe use its own detection
         success, err_msg = run_carveme_single(
             fasta, model_path, universe=universe,
-            solver=solver,
+            solver=None,
             timeout_seconds=timeout_per_model,
         )
 
@@ -392,9 +398,12 @@ def run_carveme_batch(
         else:
             print("FAILED")
             failed += 1
-            if first_error is None and err_msg:
-                first_error = err_msg
-                print(f"    Error: {err_msg[:300]}")
+            if failed <= 3 and err_msg:
+                # Print first 3 errors for diagnosis
+                for line in err_msg.splitlines()[:5]:
+                    print(f"    | {line}")
+            if failed == 3:
+                print("    (suppressing further error details)")
 
     print(f"\n  Built {len(model_paths)} models "
           f"({skipped} cached, {failed} failed)")
