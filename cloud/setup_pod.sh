@@ -35,6 +35,21 @@ if [ "${INSTALL_CARVEME:-0}" = "1" ]; then
     else
         echo "WARNING: CarveMe installation may have issues"
     fi
+
+    # Install diamond (required by CarveMe for protein alignment)
+    echo "Installing diamond aligner..."
+    if ! command -v diamond &> /dev/null; then
+        conda install -y -c bioconda diamond 2>/dev/null || \
+        wget -q https://github.com/bbuchfink/diamond/releases/download/v2.1.11/diamond-linux64.tar.gz \
+            -O /tmp/diamond.tar.gz \
+            && tar -xzf /tmp/diamond.tar.gz -C /usr/local/bin diamond \
+            && rm /tmp/diamond.tar.gz
+    fi
+    if command -v diamond &> /dev/null; then
+        echo "diamond $(diamond version 2>&1 | head -1) installed"
+    else
+        echo "WARNING: diamond not installed — CarveMe will fail"
+    fi
 fi
 
 # 4. Verify GPU is available
