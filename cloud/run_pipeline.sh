@@ -2,7 +2,10 @@
 # =============================================================================
 # Full BioMetNet E. coli Strain Pipeline
 # Run this after setup_pod.sh to execute the entire pipeline.
-# Usage: bash cloud/run_pipeline.sh [--max-models N]
+# Usage:
+#   bash cloud/run_pipeline.sh                          # BiGG-only (default)
+#   bash cloud/run_pipeline.sh --carveme 200            # BiGG + 200 CarveMe models
+#   bash cloud/run_pipeline.sh --carveme-only 200       # CarveMe build only (no training)
 # =============================================================================
 set -e
 
@@ -25,13 +28,46 @@ cd /workspace/BioMetNet
 # Ensure package is up to date in the venv
 uv sync
 
-MAX_MODELS="${1:---max-models}"
-MAX_MODELS_VAL="${2:-}"
+# Parse arguments
+CARVEME_GENOMES=""
+CARVEME_ONLY=0
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --carveme)
+            CARVEME_GENOMES="$2"
+            shift 2
+            ;;
+        --carveme-only)
+            CARVEME_GENOMES="$2"
+            CARVEME_ONLY=1
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 echo "========================================"
 echo "  BioMetNet E. coli Strain Pipeline"
 echo "========================================"
 echo ""
+
+# Optional: Build CarveMe models from NCBI genomes
+CARVEME_DIR="data/raw/carveme_models"
+if [ -n "$CARVEME_GENOMES" ]; then
+    echo "=== Step 0: Building CarveMe models from NCBI genomes ==="
+    echo "  Target: $CARVEME_GENOMES genomes"
+    echo ""
+    uv sync --extra carveme
+    uv run python scripts/build_carveme_models.py --max-genomes "$CARVEME_GENOMES"
+    echo ""
+
+    if [ "$CARVEME_ONLY" = "1" ]; then
+        echo "CarveMe build complete. Skipping training (--carveme-only mode)."
+        exit 0
+    fi
+fi
 
 # Step 1: Download BiGG models and prepare dataset
 echo "=== Step 1/3: Downloading E. coli strain models & preparing dataset ==="
@@ -39,11 +75,12 @@ echo "This downloads E. coli COBRA models from BiGG and generates training data.
 echo ""
 # Clear old processed data so it regenerates with new config
 rm -rf data/processed/ecoli_strains
-if [ -n "$MAX_MODELS_VAL" ]; then
-    uv run python scripts/prepare_data.py --max-models "$MAX_MODELS_VAL"
-else
-    uv run python scripts/prepare_data.py
+PREPARE_ARGS=""
+if [ -d "$CARVEME_DIR" ] && [ "$(ls -A $CARVEME_DIR/*.xml 2>/dev/null)" ]; then
+    PREPARE_ARGS="--carveme-dir $CARVEME_DIR"
+    echo "  Including CarveMe models from $CARVEME_DIR"
 fi
+uv run python scripts/prepare_data.py $PREPARE_ARGS
 
 echo ""
 echo "=== Step 2/3: Training E. coli strain classifier ==="

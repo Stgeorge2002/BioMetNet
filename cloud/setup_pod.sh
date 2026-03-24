@@ -25,6 +25,18 @@ cd /workspace/BioMetNet
 echo "Installing Python dependencies..."
 uv sync
 
+# 3b. Install CarveMe extras (optional, for NCBI+CarveMe pipeline)
+if [ "${INSTALL_CARVEME:-0}" = "1" ]; then
+    echo "Installing CarveMe + LP solver..."
+    uv sync --extra carveme
+    # Verify CarveMe is available
+    if uv run carve --help > /dev/null 2>&1; then
+        echo "CarveMe installed successfully"
+    else
+        echo "WARNING: CarveMe installation may have issues"
+    fi
+fi
+
 # 4. Verify GPU is available
 echo ""
 echo "=== GPU Check ==="

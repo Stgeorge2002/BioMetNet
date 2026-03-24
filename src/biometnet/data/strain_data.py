@@ -24,8 +24,9 @@ from biometnet.data.ecoli_data import evaluate_gpr
 from biometnet.data.bigg_loader import BIGG_API, BIGG_STATIC
 
 # E. coli BiGG model IDs (K-12, B, and pathogenic strains).
+# e_coli_core excluded: toy teaching model (137 genes), not representative.
 _KNOWN_BIGG_MODELS = [
-    "e_coli_core", "iAF1260", "iAF1260b",
+    "iAF1260", "iAF1260b",
     "iAPECO1_1312", "iB21_1397",
     "iEC1344_C", "iEC1349_Crooks", "iEC1356_Bl21DE3", "iEC1364_W", "iEC55989",
     "iECABU_c1320", "iECB_3114", "iECBD_1354", "iECED1_1282", "iECH74115_1262",
@@ -155,9 +156,12 @@ def _extract_genes_from_gpr(rule: str) -> set[str]:
 
 
 def build_feature_vocabs(organisms: list[dict]) -> dict[str, Any]:
-    """Build EC level-2, EC level-4, and subsystem vocabularies."""
+    """Build EC level-2 and subsystem vocabularies.
+
+    EC level-4 was removed: it adds ~966 sparse dimensions that hurt
+    generalization with only 34 training organisms.
+    """
     ec2_set: set[str] = set()
-    ec4_set: set[str] = set()
     sub_set: set[str] = set()
 
     for org in organisms:
@@ -166,23 +170,20 @@ def build_feature_vocabs(organisms: list[dict]) -> dict[str, Any]:
                 parts = ec.split(".")
                 if len(parts) >= 2:
                     ec2_set.add(f"{parts[0]}.{parts[1]}")
-                if len(parts) == 4 and all(p != "-" for p in parts):
-                    ec4_set.add(ec)
         for sub in org["reaction_subsystem"].values():
             sub_set.add(sub)
 
     ec2_vocab = {ec: i for i, ec in enumerate(sorted(ec2_set))}
-    ec4_vocab = {ec: i for i, ec in enumerate(sorted(ec4_set))}
     sub_vocab = {sub: i for i, sub in enumerate(sorted(sub_set))}
-    # features: EC2 multi-hot + EC4 multi-hot + subsystem multi-hot + 4 scalars
-    n_feat = len(ec2_vocab) + len(ec4_vocab) + len(sub_vocab) + 4
+    # features: EC2 multi-hot + subsystem multi-hot + 4 scalars
+    n_feat = len(ec2_vocab) + len(sub_vocab) + 4
 
     return {
         "ec_vocab": ec2_vocab,
-        "ec4_vocab": ec4_vocab,
+        "ec4_vocab": {},
         "subsystem_vocab": sub_vocab,
         "n_ec": len(ec2_vocab),
-        "n_ec4": len(ec4_vocab),
+        "n_ec4": 0,
         "n_subsystem": len(sub_vocab),
         "n_features": n_feat,
     }
@@ -599,6 +600,30 @@ def _stratified_organism_split(
 
 
 # ---------------------------------------------------------------------------
+# Model loading (format-agnostic)
+# ---------------------------------------------------------------------------
+
+
+def _load_cobra_model(path: Path):
+    """Load a COBRA model from JSON or SBML, detected by file extension."""
+    import cobra
+
+    suffix = path.suffix.lower()
+    name = path.name.lower()
+
+    if suffix == ".json":
+        return cobra.io.load_json_model(str(path))
+    elif suffix == ".xml" or name.endswith(".xml.gz") or suffix == ".sbml":
+        return cobra.io.read_sbml_model(str(path))
+    else:
+        # Try JSON first, fall back to SBML
+        try:
+            return cobra.io.load_json_model(str(path))
+        except Exception:
+            return cobra.io.read_sbml_model(str(path))
+
+
+# ---------------------------------------------------------------------------
 # Full dataset preparation
 # ---------------------------------------------------------------------------
 
@@ -630,10 +655,10 @@ def prepare_strain_dataset(
         mid = path.stem
         print(f"  [{i+1}/{len(model_paths)}] {mid}...", end=" ", flush=True)
         try:
-            model = cobra.io.load_json_model(str(path))
+            model = _load_cobra_model(path)
             info = extract_organism_info(model)
             del model  # free memory
-            if len(info["genes"]) >= 10 and len(info["gpr_rules"]) >= 10:
+            if len(info["genes"]) >= 200 and len(info["gpr_rules"]) >= 50:
                 organisms.append(info)
                 model_ids.append(mid)
                 print(f"{len(info['genes'])} genes, "
