@@ -6,6 +6,16 @@
 # =============================================================================
 set -e
 
+# Auto-stop the pod when the script exits (success or error) so it doesn't
+# keep running and costing money.
+_shutdown() {
+    if [ -n "$RUNPOD_POD_ID" ]; then
+        echo "Stopping pod $RUNPOD_POD_ID..."
+        runpodctl stop pod "$RUNPOD_POD_ID"
+    fi
+}
+trap _shutdown EXIT
+
 export PATH="$HOME/.local/bin:$PATH"
 export UV_PROJECT_ENVIRONMENT=/root/.venv
 export UV_LINK_MODE=copy
