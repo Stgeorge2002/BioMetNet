@@ -19,7 +19,7 @@ _shutdown() {
 }
 trap _shutdown EXIT
 
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 export UV_PROJECT_ENVIRONMENT=/root/.venv
 export UV_LINK_MODE=copy
 export PYTORCH_ALLOC_CONF=expandable_segments:True
@@ -60,6 +60,16 @@ if [ -n "$CARVEME_GENOMES" ]; then
     echo "  Target: $CARVEME_GENOMES genomes"
     echo ""
     uv sync --extra carveme
+
+    # Ensure diamond is available (required by CarveMe)
+    if ! command -v diamond &> /dev/null; then
+        echo "Installing diamond aligner..."
+        wget -q https://github.com/bbuchfink/diamond/releases/download/v2.1.11/diamond-linux64.tar.gz \
+            -O /tmp/diamond.tar.gz \
+            && tar -xzf /tmp/diamond.tar.gz -C /usr/local/bin diamond \
+            && rm /tmp/diamond.tar.gz
+        echo "diamond installed"
+    fi
     uv run python scripts/build_carveme_models.py --max-genomes "$CARVEME_GENOMES"
     echo ""
 
