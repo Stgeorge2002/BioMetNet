@@ -18,7 +18,7 @@ dev = [
 ]
 carveme = [
     "carveme>=1.6",
-    "swiglpk>=5.0",
+    "pyscipopt>=5.0",
 ]
 
 [build-system]
