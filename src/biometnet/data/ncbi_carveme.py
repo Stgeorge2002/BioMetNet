@@ -110,72 +110,74 @@ def download_protein_fasta(
     accession: str,
     out_dir: Path,
     timeout: int = 300,
-) -> Path | None:
+    retries: int = 3,
+) -> tuple[Path | None, str]:
     """Download protein FASTA for one genome from NCBI Datasets API.
 
-    Returns path to the decompressed .faa file, or None on failure.
+    Returns (path, error_message). Path is None on failure.
     """
+    import io
+    import zipfile
+
     fasta_path = out_dir / f"{accession}.faa"
     if fasta_path.exists() and fasta_path.stat().st_size > 0:
-        return fasta_path
+        return fasta_path, ""
 
     gz_path = out_dir / f"{accession}.faa.gz"
     if gz_path.exists() and gz_path.stat().st_size > 0:
-        # Decompress cached gz
         with gzip.open(gz_path, "rb") as f_in, open(fasta_path, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
-        return fasta_path
+        return fasta_path, ""
 
-    # Download via NCBI Datasets API — get the protein FASTA
-    # The datasets v2 download endpoint gives a zip; instead use direct FTP-style
     url = (
         f"https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/"
         f"{accession}/download"
     )
-    params = {
-        "include_annotation_type": "PROT_FASTA",
-    }
+    params = {"include_annotation_type": "PROT_FASTA"}
+    zip_path = out_dir / f"{accession}_download.zip"
 
-    try:
-        resp = requests.get(url, params=params, timeout=timeout, stream=True)
-        resp.raise_for_status()
+    last_error = ""
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout, stream=True)
+            if resp.status_code == 429:
+                wait = 30 * (attempt + 1)
+                last_error = f"HTTP 429 rate-limited (waiting {wait}s)"
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
 
-        # The response is a zip file containing the protein FASTA
-        zip_path = out_dir / f"{accession}_download.zip"
-        with open(zip_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
+            with open(zip_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
-        # Extract protein FASTA from the zip
-        import zipfile
-        with zipfile.ZipFile(zip_path) as zf:
-            # Find the protein FASTA inside
-            protein_files = [
-                n for n in zf.namelist()
-                if n.endswith("protein.faa") or n.endswith("protein.faa.gz")
-            ]
-            if not protein_files:
-                zip_path.unlink(missing_ok=True)
-                return None
+            with zipfile.ZipFile(zip_path) as zf:
+                protein_files = [
+                    n for n in zf.namelist()
+                    if n.endswith("protein.faa") or n.endswith("protein.faa.gz")
+                ]
+                if not protein_files:
+                    zip_path.unlink(missing_ok=True)
+                    return None, f"No protein.faa in zip (files: {zf.namelist()[:5]})"
 
-            target = protein_files[0]
-            data = zf.read(target)
+                target = protein_files[0]
+                data = zf.read(target)
+                if target.endswith(".gz"):
+                    with gzip.open(io.BytesIO(data), "rb") as gf:
+                        data = gf.read()
+                fasta_path.write_bytes(data)
 
-            if target.endswith(".gz"):
-                import io
-                with gzip.open(io.BytesIO(data), "rb") as gf:
-                    data = gf.read()
+            zip_path.unlink(missing_ok=True)
+            return fasta_path, ""
 
-            fasta_path.write_bytes(data)
+        except Exception as e:
+            last_error = f"{type(e).__name__}: {e}"
+            zip_path.unlink(missing_ok=True)
+            fasta_path.unlink(missing_ok=True)
+            if attempt < retries - 1:
+                time.sleep(5 * (attempt + 1))
 
-        zip_path.unlink(missing_ok=True)
-        return fasta_path
-
-    except Exception:
-        # Clean up partial downloads
-        gz_path.unlink(missing_ok=True)
-        fasta_path.unlink(missing_ok=True)
-        return None
+    return None, last_error
 
 
 def download_ncbi_genomes(
@@ -231,13 +233,13 @@ def download_ncbi_genomes(
         print(f"  [{i+1}/{len(records)}] {acc} ({strain})...",
               end=" ", flush=True)
 
-        path = download_protein_fasta(acc, fasta_dir)
+        path, err = download_protein_fasta(acc, fasta_dir)
         if path is not None:
             size_kb = path.stat().st_size // 1024
             print(f"OK ({size_kb}KB)")
             paths.append(path)
         else:
-            print("FAILED")
+            print(f"FAILED ({err})")
             failed += 1
 
         # Rate limit: NCBI allows 3 requests/sec without API key, 10 with
