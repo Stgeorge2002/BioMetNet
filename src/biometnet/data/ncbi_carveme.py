@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -348,11 +350,16 @@ def run_carveme_batch(
     out_dir: str | Path = "data/raw/carveme_models",
     universe: str = "gramneg",
     timeout_per_model: int = 1200,
+    workers: int | None = None,
 ) -> list[Path]:
-    """Run CarveMe on a batch of protein FASTA files.
+    """Run CarveMe on a batch of protein FASTA files in parallel.
 
     Resumes from where it left off — already-built models are skipped.
     Returns paths to successfully built SBML models.
+
+    Args:
+        workers: Number of parallel CarveMe processes. Defaults to
+                 min(cpu_count - 1, 24) to use all available CPUs.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -367,48 +374,60 @@ def run_carveme_batch(
     solver = _detect_solver()
     print(f"  Available solver: {solver or 'none detected — using CarveMe default'}")
 
-    model_paths: list[Path] = []
-    failed = 0
-    skipped = 0
-    first_error: str | None = None
+    if workers is None:
+        workers = min(max(1, (os.cpu_count() or 1) - 1), 24)
+    print(f"  Parallel workers: {workers} (of {os.cpu_count()} CPUs)")
 
+    # Separate already-cached from work-to-do
+    todo: list[tuple[int, Path, Path]] = []
+    cached_paths: list[Path] = []
     for i, fasta in enumerate(fasta_paths):
-        model_name = fasta.stem  # e.g. GCF_000005845.2
+        model_name = fasta.stem
         model_path = out_dir / f"{model_name}.xml"
-
         if model_path.exists() and model_path.stat().st_size > 1000:
-            print(f"  [{i+1}/{len(fasta_paths)}] {model_name}... "
-                  f"CACHED", flush=True)
-            model_paths.append(model_path)
-            skipped += 1
-            continue
-
-        print(f"  [{i+1}/{len(fasta_paths)}] {model_name}... ",
-              end="", flush=True)
-
-        # Don't pass explicit solver — let CarveMe use its own detection
-        success, err_msg = run_carveme_single(
-            fasta, model_path, universe=universe,
-            solver=None,
-            timeout_seconds=timeout_per_model,
-        )
-
-        if success:
-            size_kb = model_path.stat().st_size // 1024
-            print(f"OK ({size_kb}KB)")
-            model_paths.append(model_path)
+            cached_paths.append(model_path)
         else:
-            print("FAILED")
-            failed += 1
-            if failed <= 3 and err_msg:
-                # Print first 3 errors for diagnosis
-                for line in err_msg.splitlines()[:5]:
-                    print(f"    | {line}")
-            if failed == 3:
-                print("    (suppressing further error details)")
+            todo.append((i, fasta, model_path))
+
+    if cached_paths:
+        print(f"  Skipping {len(cached_paths)} already-built models")
+
+    model_paths: list[Path] = list(cached_paths)
+    failed = 0
+    errors_shown = 0
+    total = len(fasta_paths)
+
+    def _build(item: tuple[int, Path, Path]) -> tuple[int, Path, Path, bool, str]:
+        idx, fasta, model_path = item
+        success, err = run_carveme_single(
+            fasta, model_path, universe=universe,
+            solver=None, timeout_seconds=timeout_per_model,
+        )
+        return idx, fasta, model_path, success, err
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_build, item): item for item in todo}
+        for future in as_completed(futures):
+            idx, fasta, model_path, success, err_msg = future.result()
+            model_name = fasta.stem
+            done = len(cached_paths) + failed + len(model_paths) - len(cached_paths) + 1
+            if success:
+                size_kb = model_path.stat().st_size // 1024
+                print(f"  [{idx+1}/{total}] {model_name}... OK ({size_kb}KB)",
+                      flush=True)
+                model_paths.append(model_path)
+            else:
+                print(f"  [{idx+1}/{total}] {model_name}... FAILED", flush=True)
+                failed += 1
+                if errors_shown < 3 and err_msg:
+                    for line in err_msg.splitlines()[:5]:
+                        print(f"    | {line}")
+                    errors_shown += 1
+                if errors_shown == 3:
+                    print("    (suppressing further error details)")
 
     print(f"\n  Built {len(model_paths)} models "
-          f"({skipped} cached, {failed} failed)")
+          f"({len(cached_paths)} cached, {failed} failed)")
     return model_paths
 
 
